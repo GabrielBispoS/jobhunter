@@ -48,6 +48,20 @@ async function href(el: any, sel: string): Promise<string | undefined> {
 
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
 
+// Validate a URL is a real job page, not a homepage/root
+function isValidJobUrl(url: string, baseDomain: string): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    const path = u.pathname;
+    // Reject root paths, empty paths, or paths that are just the domain
+    if (path === '/' || path === '' || path.length < 4) return false;
+    // Reject if URL is exactly the base domain
+    if (url.replace(/\/+$/, '') === baseDomain.replace(/\/+$/, '')) return false;
+    return true;
+  } catch { return false; }
+}
+
 // ── Programathor ──────────────────────────────────────────────────────────────
 export async function scrapeProgramathor(config: SearchConfig): Promise<ScraperResult> {
   const start = Date.now(); const jobs: Job[] = []; const errors: string[] = [];
@@ -63,7 +77,7 @@ export async function scrapeProgramathor(config: SearchConfig): Promise<ScraperR
         const company = await txt(card, '[class*="company"], [class*="employer"]') ?? 'N/A';
         const location = await txt(card, '[class*="location"], [class*="city"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `programathor-${b64id(title,company)}`, title, company, location, remote: location?.toLowerCase().includes('remoto') ? 'remote' : undefined, url: link || 'https://programathor.com.br', apply_url: link, source: 'programathor' as any, fetched_at: new Date().toISOString(), tags: ['tech'] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://programathor.com.br')) jobs.push({ id: `programathor-${b64id(title,company)}`, title, company, location, remote: location?.toLowerCase().includes('remoto') ? 'remote' : undefined, url: link!, apply_url: link, source: 'programathor' as any, fetched_at: new Date().toISOString(), tags: ['tech'] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -76,20 +90,22 @@ export async function scrapeHipsters(config: SearchConfig): Promise<ScraperResul
   const start = Date.now(); const jobs: Job[] = []; const errors: string[] = [];
   try {
     const ctx = await newCtx(); const page = await ctx.newPage(); await stealth(page);
-    await page.goto('https://hipsters.jobs/vagas/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto('https://hipsters.jobs/vagas/', { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(1500);
     const keyword = config.keywords.map(k => k.toLowerCase());
-    const cards = await page.$$('article, .job-post, [class*="vaga"], li.job');
-    for (const card of cards.slice(0, 50)) {
-      try {
-        const title = await txt(card, 'h2, h3, .title, [class*="title"]') ?? 'N/A';
-        const company = await txt(card, '[class*="company"], [class*="employer"]') ?? 'N/A';
-        const link = await href(card, 'a');
-        if (title === 'N/A') continue;
-        const text = `${title} ${company}`.toLowerCase();
-        if (keyword.length && !keyword.some(k => text.includes(k))) continue;
-        jobs.push({ id: `hipsters-${b64id(title,company)}`, title, company, remote: 'remote', url: link || 'https://hipsters.jobs', apply_url: link, source: 'hipsters' as any, fetched_at: new Date().toISOString(), tags: ['tech','remote'] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('article, .job-post, [class*="vaga"], li.job'));
+      return cards.slice(0, 50).map(card => ({
+        title: card.querySelector('h2, h3, .title, [class*="title"]')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[class*="company"], [class*="employer"]')?.textContent?.trim() || 'N/A',
+        url: (card.querySelector('a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title === 'N/A' || !isValidJobUrl(item.url, 'https://hipsters.jobs')) continue;
+      const text = `${item.title} ${item.company}`.toLowerCase();
+      if (keyword.length && !keyword.some(k => text.includes(k))) continue;
+      jobs.push({ id: `hipsters-${b64id(item.title, item.company)}`, title: item.title, company: item.company, remote: 'remote', url: item.url, apply_url: item.url, source: 'hipsters' as any, fetched_at: new Date().toISOString(), tags: ['tech','remote'] });
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Hipsters.jobs: ${err.message}`); }
@@ -134,7 +150,7 @@ export async function scrapeRemotar(config: SearchConfig): Promise<ScraperResult
         const title = await txt(card, 'h2, h3, [class*="title"]') ?? 'N/A';
         const company = await txt(card, '[class*="company"]') ?? 'N/A';
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `remotar-${b64id(title,company)}`, title, company, remote: 'remote', location: 'Remoto', url: link || 'https://remotar.com.br', apply_url: link, source: 'remotar' as any, fetched_at: new Date().toISOString(), tags: ['remote'] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://remotar.com.br')) jobs.push({ id: `remotar-${b64id(title,company)}`, title, company, remote: 'remote', location: 'Remoto', url: link!, apply_url: link, source: 'remotar' as any, fetched_at: new Date().toISOString(), tags: ['remote'] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -157,7 +173,7 @@ export async function scrapeTrabalha(config: SearchConfig): Promise<ScraperResul
         const company = await txt(card, '[class*="company"], [class*="empresa"]') ?? 'N/A';
         const location = await txt(card, '[class*="location"], [class*="cidade"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `trabalha-${b64id(title,company)}`, title, company, location, url: link || 'https://www.trabalhabrasil.com.br', apply_url: link, source: 'trabalha_brasil' as any, fetched_at: new Date().toISOString(), tags: [] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://www.trabalhabrasil.com.br')) jobs.push({ id: `trabalha-${b64id(title,company)}`, title, company, location, url: link!, apply_url: link, source: 'trabalha_brasil' as any, fetched_at: new Date().toISOString(), tags: [] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -171,18 +187,22 @@ export async function scrapeWellfound(config: SearchConfig): Promise<ScraperResu
   try {
     const ctx = await newCtx(); const page = await ctx.newPage(); await stealth(page);
     const keyword = encodeURIComponent(config.keywords.join(' '));
-    await page.goto(`https://wellfound.com/jobs?q=${keyword}&remote=true`, { waitUntil: 'domcontentloaded', timeout: 35000 });
+    await page.goto(`https://wellfound.com/jobs?q=${keyword}&remote=true`, { waitUntil: 'networkidle', timeout: 35000 });
     await page.waitForTimeout(3000);
     await page.waitForSelector('[class*="JobCard"], [data-test*="job"]', { timeout: 10000 }).catch(() => {});
-    const cards = await page.$$('[class*="JobCard"], [data-test*="job-listing"], article[class*="job"]');
-    for (const card of cards.slice(0, 30)) {
-      try {
-        const title = await txt(card, '[class*="title"], h2, h3') ?? 'N/A';
-        const company = await txt(card, '[class*="company"], [class*="startup"]') ?? 'N/A';
-        const location = await txt(card, '[class*="location"]');
-        const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `wellfound-${b64id(title,company)}`, title, company, location, remote: location?.toLowerCase().includes('remote') ? 'remote' : undefined, url: link || 'https://wellfound.com/jobs', apply_url: link, source: 'wellfound' as any, fetched_at: new Date().toISOString(), tags: ['startup'] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[class*="JobCard"], [data-test*="job-listing"], article[class*="job"]'));
+      return cards.slice(0, 30).map(card => ({
+        title: card.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[class*="company"], [class*="startup"]')?.textContent?.trim() || 'N/A',
+        location: card.querySelector('[class*="location"]')?.textContent?.trim() || '',
+        url: (card.querySelector('a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && isValidJobUrl(item.url, 'https://wellfound.com')) {
+        jobs.push({ id: `wellfound-${b64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, remote: item.location?.toLowerCase().includes('remote') ? 'remote' : undefined, url: item.url, apply_url: item.url, source: 'wellfound' as any, fetched_at: new Date().toISOString(), tags: ['startup'] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Wellfound: ${err.message}`); }
@@ -262,15 +282,19 @@ export async function scrapeDice(config: SearchConfig): Promise<ScraperResult> {
     const q = encodeURIComponent(config.keywords.join(' '));
     await page.goto(`https://www.dice.com/jobs?q=${q}&location=Remote&radius=30&radiusUnit=mi&page=1&pageSize=20&filters.postedDate=ONE&language=en`, { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(3000);
-    const cards = await page.$$('[data-cy="card"], dhi-search-card, .card');
-    for (const card of cards.slice(0, 25)) {
-      try {
-        const title = await txt(card, '[data-cy="card-title-link"], h5, [class*="title"]') ?? 'N/A';
-        const company = await txt(card, '[data-cy="search-result-company-name"], [class*="company"]') ?? 'N/A';
-        const location = await txt(card, '[data-cy="search-result-location"], [class*="location"]');
-        const link = await href(card, 'a[data-cy="card-title-link"], a');
-        if (title !== 'N/A') jobs.push({ id: `dice-${b64id(title,company)}`, title, company, location, remote: location?.toLowerCase().includes('remote') ? 'remote' : undefined, url: link || 'https://www.dice.com', apply_url: link, source: 'dice' as any, fetched_at: new Date().toISOString(), tags: ['tech'] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[data-cy="card"], dhi-search-card, .card'));
+      return cards.slice(0, 25).map(card => ({
+        title: card.querySelector('[data-cy="card-title-link"], h5, [class*="title"]')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[data-cy="search-result-company-name"], [class*="company"]')?.textContent?.trim() || 'N/A',
+        location: card.querySelector('[data-cy="search-result-location"], [class*="location"]')?.textContent?.trim() || '',
+        url: (card.querySelector('a[data-cy="card-title-link"], a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && isValidJobUrl(item.url, 'https://www.dice.com')) {
+        jobs.push({ id: `dice-${b64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, remote: item.location?.toLowerCase().includes('remote') ? 'remote' : undefined, url: item.url, apply_url: item.url, source: 'dice' as any, fetched_at: new Date().toISOString(), tags: ['tech'] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Dice: ${err.message}`); }
@@ -285,15 +309,19 @@ export async function scrapeBuiltIn(config: SearchConfig): Promise<ScraperResult
     const q = encodeURIComponent(config.keywords.join(' '));
     await page.goto(`https://builtin.com/jobs?search=${q}&remote=true`, { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(3000);
-    const cards = await page.$$('[class*="job-card"], [data-id], article');
-    for (const card of cards.slice(0, 25)) {
-      try {
-        const title = await txt(card, 'h2, h3, [class*="title"]') ?? 'N/A';
-        const company = await txt(card, '[class*="company"]') ?? 'N/A';
-        const location = await txt(card, '[class*="location"]');
-        const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `builtin-${b64id(title,company)}`, title, company, location, url: link || 'https://builtin.com', apply_url: link, source: 'builtin' as any, fetched_at: new Date().toISOString(), tags: ['tech'] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[class*="job-card"], [data-id], article'));
+      return cards.slice(0, 25).map(card => ({
+        title: card.querySelector('h2, h3, [class*="title"]')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[class*="company"]')?.textContent?.trim() || 'N/A',
+        location: card.querySelector('[class*="location"]')?.textContent?.trim() || '',
+        url: (card.querySelector('a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && isValidJobUrl(item.url, 'https://builtin.com')) {
+        jobs.push({ id: `builtin-${b64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, url: item.url, apply_url: item.url, source: 'builtin' as any, fetched_at: new Date().toISOString(), tags: ['tech'] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Built In: ${err.message}`); }
@@ -308,16 +336,20 @@ export async function scrapeZipRecruiter(config: SearchConfig): Promise<ScraperR
     const q = encodeURIComponent(config.keywords.join(' '));
     await page.goto(`https://www.ziprecruiter.com/jobs-search?search=${q}&location=Remote`, { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(3000);
-    const cards = await page.$$('[class*="job_result"], article[class*="job"], [data-job-id]');
-    for (const card of cards.slice(0, 25)) {
-      try {
-        const title = await txt(card, 'h2, h3, [class*="title"]') ?? 'N/A';
-        const company = await txt(card, '[class*="company"]') ?? 'N/A';
-        const location = await txt(card, '[class*="location"]');
-        const salary = await txt(card, '[class*="salary"]');
-        const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `zip-${b64id(title,company)}`, title, company, location, salary, url: link || 'https://www.ziprecruiter.com', apply_url: link, source: 'ziprecruiter' as any, fetched_at: new Date().toISOString(), tags: [] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[class*="job_result"], article[class*="job"], [data-job-id]'));
+      return cards.slice(0, 25).map(card => ({
+        title: card.querySelector('h2, h3, [class*="title"]')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[class*="company"]')?.textContent?.trim() || 'N/A',
+        location: card.querySelector('[class*="location"]')?.textContent?.trim() || '',
+        salary: card.querySelector('[class*="salary"]')?.textContent?.trim() || '',
+        url: (card.querySelector('a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && isValidJobUrl(item.url, 'https://www.ziprecruiter.com')) {
+        jobs.push({ id: `zip-${b64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, salary: item.salary || undefined, url: item.url, apply_url: item.url, source: 'ziprecruiter' as any, fetched_at: new Date().toISOString(), tags: [] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`ZipRecruiter: ${err.message}`); }
@@ -332,15 +364,19 @@ export async function scrapeMonster(config: SearchConfig): Promise<ScraperResult
     const q = encodeURIComponent(config.keywords.join(' '));
     await page.goto(`https://www.monster.com/jobs/search?q=${q}&where=Remote`, { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(3000);
-    const cards = await page.$$('[data-testid="jobCard"], [class*="job-card"], article');
-    for (const card of cards.slice(0, 25)) {
-      try {
-        const title = await txt(card, 'h2, h3, [data-testid="job-title"]') ?? 'N/A';
-        const company = await txt(card, '[data-testid="company"], [class*="company"]') ?? 'N/A';
-        const location = await txt(card, '[data-testid="location"], [class*="location"]');
-        const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `monster-${b64id(title,company)}`, title, company, location, url: link || 'https://www.monster.com', apply_url: link, source: 'monster' as any, fetched_at: new Date().toISOString(), tags: [] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[data-testid="jobCard"], [class*="job-card"], article'));
+      return cards.slice(0, 25).map(card => ({
+        title: card.querySelector('h2, h3, [data-testid="job-title"]')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[data-testid="company"], [class*="company"]')?.textContent?.trim() || 'N/A',
+        location: card.querySelector('[data-testid="location"], [class*="location"]')?.textContent?.trim() || '',
+        url: (card.querySelector('a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && isValidJobUrl(item.url, 'https://www.monster.com')) {
+        jobs.push({ id: `monster-${b64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, url: item.url, apply_url: item.url, source: 'monster' as any, fetched_at: new Date().toISOString(), tags: [] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Monster: ${err.message}`); }
@@ -355,16 +391,20 @@ export async function scrapeRevelo(config: SearchConfig): Promise<ScraperResult>
     const keyword = encodeURIComponent(config.keywords.join(' '));
     await page.goto(`https://www.revelo.com.br/vagas?q=${keyword}`, { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(3000);
-    const cards = await page.$$('[class*="job"], [class*="vaga"], article');
-    for (const card of cards.slice(0, 30)) {
-      try {
-        const title = await txt(card, 'h2, h3, [class*="title"]') ?? 'N/A';
-        const company = await txt(card, '[class*="company"]') ?? 'N/A';
-        const location = await txt(card, '[class*="location"]');
-        const salary = await txt(card, '[class*="salary"], [class*="salario"]');
-        const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `revelo-${b64id(title,company)}`, title, company, location, salary, url: link || 'https://www.revelo.com.br', apply_url: link, source: 'revelo' as any, fetched_at: new Date().toISOString(), tags: [] });
-      } catch { /* skip */ }
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[class*="job"], [class*="vaga"], article'));
+      return cards.slice(0, 30).map(card => ({
+        title: card.querySelector('h2, h3, [class*="title"]')?.textContent?.trim() || 'N/A',
+        company: card.querySelector('[class*="company"]')?.textContent?.trim() || 'N/A',
+        location: card.querySelector('[class*="location"]')?.textContent?.trim() || '',
+        salary: card.querySelector('[class*="salary"], [class*="salario"]')?.textContent?.trim() || '',
+        url: (card.querySelector('a') as HTMLAnchorElement)?.href || '',
+      }));
+    });
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && isValidJobUrl(item.url, 'https://www.revelo.com.br')) {
+        jobs.push({ id: `revelo-${b64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, salary: item.salary || undefined, url: item.url, apply_url: item.url, source: 'revelo' as any, fetched_at: new Date().toISOString(), tags: [] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Revelo: ${err.message}`); }
@@ -387,7 +427,7 @@ export async function scrapeSolides(config: SearchConfig): Promise<ScraperResult
         const company = await txt(card, '[class*="company"], [class*="empresa"]') ?? 'N/A';
         const location = await txt(card, '[class*="location"], [class*="cidade"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `solides-${b64id(title,company)}`, title, company, location, url: link || 'https://vagas.solides.com.br', apply_url: link, source: 'solides' as any, fetched_at: new Date().toISOString(), tags: [] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://vagas.solides.com.br')) jobs.push({ id: `solides-${b64id(title,company)}`, title, company, location, url: link!, apply_url: link, source: 'solides' as any, fetched_at: new Date().toISOString(), tags: [] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -411,7 +451,7 @@ export async function scrapeBne(config: SearchConfig): Promise<ScraperResult> {
         const company = await txt(card, '[class*="company"], .company') ?? 'N/A';
         const location = await txt(card, '[class*="location"], .location');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `bne-${b64id(title,company)}`, title, company, location, url: link || 'https://www.bne.com.br', apply_url: link, source: 'bne' as any, fetched_at: new Date().toISOString(), tags: [] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://www.bne.com.br')) jobs.push({ id: `bne-${b64id(title,company)}`, title, company, location, url: link!, apply_url: link, source: 'bne' as any, fetched_at: new Date().toISOString(), tags: [] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -434,7 +474,7 @@ export async function scrapeEmpregos(config: SearchConfig): Promise<ScraperResul
         const company = await txt(card, '[class*="company"], [class*="empresa"]') ?? 'N/A';
         const location = await txt(card, '[class*="location"], [class*="cidade"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `empregos-${b64id(title,company)}`, title, company, location, url: link || 'https://www.empregos.com.br', apply_url: link, source: 'empregos_br' as any, fetched_at: new Date().toISOString(), tags: [] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://www.empregos.com.br')) jobs.push({ id: `empregos-${b64id(title,company)}`, title, company, location, url: link!, apply_url: link, source: 'empregos_br' as any, fetched_at: new Date().toISOString(), tags: [] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -457,7 +497,7 @@ export async function scrapeCiee(config: SearchConfig): Promise<ScraperResult> {
         const company = await txt(card, '[class*="company"], [class*="empresa"]') ?? 'N/A';
         const location = await txt(card, '[class*="location"], [class*="cidade"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `ciee-${b64id(title,company)}`, title, company, location, url: link || 'https://portal.ciee.org.br', apply_url: link, source: 'ciee' as any, fetched_at: new Date().toISOString(), tags: ['estágio'] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://portal.ciee.org.br')) jobs.push({ id: `ciee-${b64id(title,company)}`, title, company, location, url: link!, apply_url: link, source: 'ciee' as any, fetched_at: new Date().toISOString(), tags: ['estágio'] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -511,7 +551,7 @@ export async function scrapeOtta(config: SearchConfig): Promise<ScraperResult> {
         const location = await txt(card, '[class*="location"]');
         const salary = await txt(card, '[class*="salary"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `otta-${b64id(title,company)}`, title, company, location, salary, remote: location?.toLowerCase().includes('remote') ? 'remote' : undefined, url: link || 'https://app.otta.com/jobs', apply_url: link, source: 'otta' as any, fetched_at: new Date().toISOString(), tags: ['startup','tech'] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://app.otta.com')) jobs.push({ id: `otta-${b64id(title,company)}`, title, company, location, salary, remote: location?.toLowerCase().includes('remote') ? 'remote' : undefined, url: link || 'https://app.otta.com/jobs', apply_url: link, source: 'otta' as any, fetched_at: new Date().toISOString(), tags: ['startup','tech'] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -533,7 +573,7 @@ export async function scrapeWorkana(config: SearchConfig): Promise<ScraperResult
         const title = await txt(card, 'h2, h3, .title, [class*="title"]') ?? 'N/A';
         const budget = await txt(card, '[class*="budget"], [class*="price"], [class*="valor"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `workana-${b64id(title, 'workana')}`, title, company: 'Workana (Freelance)', salary: budget, remote: 'remote', url: link || 'https://www.workana.com', apply_url: link, source: 'workana' as any, fetched_at: new Date().toISOString(), tags: ['freelance', 'remote'] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://www.workana.com')) jobs.push({ id: `workana-${b64id(title, 'workana')}`, title, company: 'Workana (Freelance)', salary: budget, remote: 'remote', url: link!, apply_url: link, source: 'workana' as any, fetched_at: new Date().toISOString(), tags: ['freelance', 'remote'] });
       } catch { /* skip */ }
     }
     await ctx.close();
@@ -557,7 +597,7 @@ export async function scrapeEmpregaBrasil(config: SearchConfig): Promise<Scraper
         const location = await txt(card, '[class*="local"], [class*="cidade"], [class*="location"]');
         const salary = await txt(card, '[class*="salario"], [class*="salary"]');
         const link = await href(card, 'a');
-        if (title !== 'N/A') jobs.push({ id: `sine-${b64id(title,company)}`, title, company, location, salary, url: link || 'https://empregabrasil.mte.gov.br', apply_url: link, source: 'sine' as any, fetched_at: new Date().toISOString(), tags: ['CLT', 'governo'] });
+        if (title !== 'N/A' && isValidJobUrl(link || '', 'https://empregabrasil.mte.gov.br')) jobs.push({ id: `sine-${b64id(title,company)}`, title, company, location, salary, url: link!, apply_url: link, source: 'sine' as any, fetched_at: new Date().toISOString(), tags: ['CLT', 'governo'] });
       } catch { /* skip */ }
     }
     await ctx.close();

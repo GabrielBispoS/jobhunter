@@ -103,23 +103,28 @@ export async function scrapeCatho(config: SearchConfig): Promise<ScraperResult> 
     const ctx = await newCtx({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' });
     const page = await ctx.newPage();
     await stealthPage(page);
-    const keyword = config.keywords.join('+');
-    const url = `https://www.catho.com.br/vagas/${encodeURIComponent(keyword.replace(/\s+/g, '-'))}/`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const keyword = config.keywords.join(' ');
+    const cathoUrl = `https://www.catho.com.br/vagas/${encodeURIComponent(keyword.replace(/\s+/g, '-'))}/`;
+    await page.goto(cathoUrl, { waitUntil: 'networkidle', timeout: 35000 });
     await page.waitForTimeout(2000);
-    await page.waitForSelector('[class*="card"], li[class*="Job"]', { timeout: 10000 }).catch(() => {});
-    const cards = await page.$$('[class*="card"]:has(h2), [data-id], article[class*="Job"]');
-    for (const card of cards.slice(0, 30)) {
-      try {
-        const title = await getText(card, 'h2, h3, [class*="title"]') ?? 'N/A';
-        const company = await getText(card, '[class*="company"], [class*="employer"]') ?? 'N/A';
-        const location = await getText(card, '[class*="location"], [class*="city"]');
-        const salary = await getText(card, '[class*="salary"], [class*="wage"]');
-        const link = await getHref(card, 'a[href*="/vagas/"]');
-        if (title !== 'N/A') {
-          jobs.push({ id: `catho-${toB64id(title, company)}`, title, company, location, salary, url: link || url, apply_url: link, source: 'catho', fetched_at: new Date().toISOString(), tags: [] });
-        }
-      } catch { /* skip */ }
+
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('[class*="card"]:has(h2), [data-id], article[class*="Job"], li[class*="Job"]'));
+      return cards.slice(0, 30).map(card => {
+        const title = card.querySelector('h2, h3, [class*="title"]')?.textContent?.trim() || 'N/A';
+        const company = card.querySelector('[class*="company"], [class*="employer"]')?.textContent?.trim() || 'N/A';
+        const location = card.querySelector('[class*="location"], [class*="city"]')?.textContent?.trim() || '';
+        const salary = card.querySelector('[class*="salary"], [class*="wage"]')?.textContent?.trim() || '';
+        const anchor = card.querySelector('a[href*="/vagas/"]') as HTMLAnchorElement | null;
+        const url = anchor?.href || '';
+        return { title, company, location, salary, url };
+      });
+    });
+
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && item.url && !item.url.endsWith('catho.com.br/')) {
+        jobs.push({ id: `catho-${toB64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, salary: item.salary || undefined, url: item.url, apply_url: item.url, source: 'catho', fetched_at: new Date().toISOString(), tags: [] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`Catho: ${err.message}`); }
@@ -137,21 +142,27 @@ export async function scrapeInfoJobs(config: SearchConfig): Promise<ScraperResul
     const page = await ctx.newPage();
     await stealthPage(page);
     const keyword = config.keywords.join(' ');
-    const url = `https://www.infojobs.com.br/empregos.aspx?palabra=${encodeURIComponent(keyword)}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const infojobsUrl = `https://www.infojobs.com.br/empregos.aspx?palabra=${encodeURIComponent(keyword)}`;
+    await page.goto(infojobsUrl, { waitUntil: 'networkidle', timeout: 35000 });
     await page.waitForTimeout(2000);
-    const cards = await page.$$('.offer-item, [class*="offer"], article.ij-offersearch');
-    for (const card of cards.slice(0, 30)) {
-      try {
-        const title = await getText(card, 'h2 a, h3 a, .title-link') ?? 'N/A';
-        const company = await getText(card, '[class*="company"], .company-name') ?? 'N/A';
-        const location = await getText(card, '[class*="location"], .location');
-        const salary = await getText(card, '[class*="salary"]');
-        const link = await getHref(card, 'h2 a, h3 a, a[href*="/emprego/"]');
-        if (title !== 'N/A') {
-          jobs.push({ id: `infojobs-${toB64id(title, company)}`, title, company, location, salary, url: link || url, apply_url: link, source: 'infojobs' as any, fetched_at: new Date().toISOString(), tags: [] });
-        }
-      } catch { /* skip */ }
+
+    const extracted = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('.offer-item, [class*="offer"], article.ij-offersearch'));
+      return cards.slice(0, 30).map(card => {
+        const titleAnchor = card.querySelector('h2 a, h3 a, .title-link') as HTMLAnchorElement | null;
+        const title = titleAnchor?.textContent?.trim() || 'N/A';
+        const url = titleAnchor?.href || '';
+        const company = card.querySelector('[class*="company"], .company-name')?.textContent?.trim() || 'N/A';
+        const location = card.querySelector('[class*="location"], .location')?.textContent?.trim() || '';
+        const salary = card.querySelector('[class*="salary"]')?.textContent?.trim() || '';
+        return { title, company, location, salary, url };
+      });
+    });
+
+    for (const item of extracted) {
+      if (item.title !== 'N/A' && item.url && !item.url.endsWith('infojobs.com.br/')) {
+        jobs.push({ id: `infojobs-${toB64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, salary: item.salary || undefined, url: item.url, apply_url: item.url, source: 'infojobs' as any, fetched_at: new Date().toISOString(), tags: [] });
+      }
     }
     await ctx.close();
   } catch (err: any) { errors.push(`InfoJobs: ${err.message}`); }
