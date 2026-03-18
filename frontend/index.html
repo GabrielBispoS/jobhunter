@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobHunter — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --border: #222232;
+      --accent: #6366f1;
+      --accent2: #22d3ee;
+      --accent3: #f59e0b;
+      --green: #10b981;
+      --red: #ef4444;
+      --text: #e8e8f0;
+      --muted: #6b6b85;
+      --tag: #1e1e30;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Instrument Sans', sans-serif; min-height: 100vh; display: flex; }
+
+    .sidebar { width: 220px; min-height: 100vh; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 24px 16px; position: fixed; top: 0; left: 0; bottom: 0; z-index: 50; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; margin-bottom: 36px; display: flex; align-items: center; gap: 8px; }
+    .logo span { color: var(--accent2); }
+    .nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 14px; font-weight: 500; transition: all 0.15s; border: 1px solid transparent; }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+    .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .badge { margin-left: auto; background: var(--accent); color: white; font-size: 10px; font-family: 'DM Mono', monospace; padding: 1px 6px; border-radius: 9999px; font-weight: 500; }
+
+    .main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .header { padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface); position: sticky; top: 0; z-index: 10; }
+    .page-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; }
+    .header-actions { display: flex; gap: 10px; }
+    .btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; font-family: 'Instrument Sans', sans-serif; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+    .btn-ai { background: linear-gradient(135deg, #6366f1, #22d3ee); color: white; }
+    .btn-ai:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .content { padding: 28px 32px; flex: 1; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 28px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: relative; overflow: hidden; }
+    .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+    .stat-card.purple::before { background: var(--accent); }
+    .stat-card.cyan::before { background: var(--accent2); }
+    .stat-card.amber::before { background: var(--accent3); }
+    .stat-card.green::before { background: var(--green); }
+    .stat-card.red::before { background: var(--red); }
+    .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+    .stat-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; line-height: 1; }
+    .stat-card.purple .stat-value { color: var(--accent); }
+    .stat-card.cyan .stat-value { color: var(--accent2); }
+    .stat-card.amber .stat-value { color: var(--accent3); }
+    .stat-card.green .stat-value { color: var(--green); }
+    .stat-card.red .stat-value { color: var(--red); }
+    .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .ai-banner { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent2) 8%, transparent)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; display: flex; align-items: center; gap: 20px; }
+    .ai-banner-icon { font-size: 32px; flex-shrink: 0; }
+    .ai-banner-content { flex: 1; }
+    .ai-banner-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .ai-banner-sub { font-size: 13px; color: var(--muted); }
+    .ai-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    .cv-result { background: var(--surface); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; display: none; }
+    .cv-result.visible { display: block; }
+    .cv-result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .cv-result-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: var(--accent2); }
+    .cv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .cv-chip { padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+    .cv-chip.tech { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+    .cv-chip.role { background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border: 1px solid color-mix(in srgb, var(--accent2) 30%, transparent); }
+    .cv-chip.keyword { background: color-mix(in srgb, var(--accent3) 12%, transparent); color: var(--accent3); border: 1px solid color-mix(in srgb, var(--accent3) 30%, transparent); }
+    .cv-summary-text { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .section-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
+
+    .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+    .search-input { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; color: var(--text); font-family: 'Instrument Sans', sans-serif; font-size: 13px; width: 260px; }
+    .search-input:focus { outline: none; border-color: var(--accent); }
+    .search-input::placeholder { color: var(--muted); }
+    select.filter-select { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; color: var(--text); font-family: 'Instrument Sans', sans-serif; font-size: 13px; cursor: pointer; }
+    select.filter-select:focus { outline: none; border-color: var(--accent); }
+
+    .match-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); transition: all 0.15s; }
+    .match-toggle.active { border-color: color-mix(in srgb, var(--green) 50%, transparent); color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }
+    .match-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.15s; }
+    .match-toggle.active .match-dot { background: var(--green); }
+
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 12px 16px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    td { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+    .job-title { font-weight: 600; color: var(--text); font-size: 14px; }
+    .job-company { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .match-score { display: inline-flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; }
+    .match-high { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
+    .match-mid { background: color-mix(in srgb, var(--accent3) 15%, transparent); color: var(--accent3); border: 1px solid color-mix(in srgb, var(--accent3) 30%, transparent); }
+    .match-low { background: var(--tag); color: var(--muted); border: 1px solid var(--border); }
+    .match-bar { width: 40px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 2px; }
+    .match-bar-fill { height: 100%; border-radius: 2px; }
+
+    .source-badge { font-family: 'DM Mono', monospace; font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+    .src-gupy { background: #1a2a1a; color: #4ade80; border: 1px solid #1f4d1f; }
+    .src-inhire { background: #1a1a2a; color: var(--accent); border: 1px solid #2a2a5a; }
+    .src-glassdoor { background: #2a1a10; color: #fb923c; border: 1px solid #5a2a10; }
+    .src-catho { background: #2a1a1a; color: #f87171; border: 1px solid #5a1a1a; }
+    .src-infojobs { background: #1a2a2a; color: var(--accent2); border: 1px solid #1a4a5a; }
+
+    .remote-tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+    .remote-remote { background: #0a2a1a; color: var(--green); }
+    .remote-hybrid { background: #2a1a10; color: var(--accent3); }
+    .remote-onsite { background: var(--tag); color: var(--muted); }
+
+    .actions { display: flex; gap: 6px; }
+    .icon-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); transition: all 0.15s; }
+    .icon-btn:hover { background: var(--surface2); color: var(--text); }
+    .icon-btn.apply:hover { background: #1a1a3a; color: var(--accent); border-color: var(--accent); }
+
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 540px; max-height: 85vh; overflow-y: auto; }
+    .modal-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    input[type="text"], textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-family: 'Instrument Sans', sans-serif; font-size: 13px; }
+    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 80px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--muted); transition: all 0.15s; text-transform: none; letter-spacing: 0; }
+    .checkbox-label:has(input:checked) { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+    .checkbox-label input { display: none; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+
+    .kanban { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; align-items: start; }
+    .kanban-col { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .kanban-header { padding: 12px 16px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .kanban-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; }
+    .kanban-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.15s; }
+    .kanban-card:hover { border-color: var(--accent); }
+    .kanban-card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .kanban-card-company { font-size: 11px; color: var(--muted); }
+    .kanban-card-date { font-size: 10px; color: var(--muted); margin-top: 8px; font-family: 'DM Mono', monospace; }
+
+    .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .profile-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+    .profile-card.full { grid-column: 1 / -1; }
+    .tags-input-wrap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; min-height: 42px; }
+    .tag-pill { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); padding: 2px 10px; border-radius: 9999px; font-size: 12px; display: flex; align-items: center; gap: 4px; }
+    .tag-pill button { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; opacity: 0.6; }
+    .tag-pill button:hover { opacity: 1; }
+
+    .upload-area { border: 2px dashed var(--border); border-radius: 12px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.2s; }
+    .upload-area:hover, .upload-area.dragover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
+    .upload-icon { font-size: 36px; margin-bottom: 10px; }
+    .upload-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+    .upload-sub { font-size: 13px; color: var(--muted); }
+    input[type="file"] { display: none; }
+
+    .ai-output { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-size: 12px; line-height: 1.7; color: var(--text); max-height: 260px; overflow-y: auto; white-space: pre-wrap; font-family: 'DM Mono', monospace; }
+    .ai-thinking { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 13px; padding: 12px; }
+    .dots span { animation: blink 1.2s infinite; }
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+    .loading { display: flex; align-items: center; justify-content: center; padding: 48px; color: var(--muted); gap: 10px; font-size: 14px; }
+    .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
+    .empty-icon { font-size: 36px; margin-bottom: 12px; }
+
+    .toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+    .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; }
+    .toast.success { border-color: var(--green); }
+    .toast.error { border-color: var(--red); }
+    .toast.info { border-color: var(--accent); }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+
+    /* ── Scrape Progress Modal ── */
+    .progress-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 600px; max-height: 85vh; overflow-y: auto; }
+    .progress-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .progress-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+    .progress-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+    .progress-stat { background: var(--surface2); border-radius: 8px; padding: 12px; text-align: center; }
+    .progress-stat-val { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; }
+    .progress-stat-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .source-list { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; }
+    .source-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); font-size: 13px; transition: all 0.2s; }
+    .source-row.running { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .source-row.done { border-color: var(--green); background: color-mix(in srgb, var(--green) 6%, transparent); }
+    .source-row.error { border-color: var(--red); background: color-mix(in srgb, var(--red) 6%, transparent); }
+    .source-row.waiting { opacity: 0.5; }
+    .source-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+    .source-name { flex: 1; font-weight: 600; }
+    .source-count { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+    .source-count.has-jobs { color: var(--green); }
+    .source-dur { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+    .progress-bar-wrap { background: var(--border); border-radius: 9999px; height: 4px; margin-bottom: 20px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 9999px; transition: width 0.4s ease; }
+
+    /* ── Schedules Page ── */
+    .schedule-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 12px; }
+    .schedule-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .schedule-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; }
+    .schedule-meta { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .toggle-switch { position: relative; width: 40px; height: 22px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--border); border-radius: 9999px; transition: .3s; }
+    .toggle-slider:before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .3s; }
+    input:checked + .toggle-slider { background: var(--green); }
+    input:checked + .toggle-slider:before { transform: translateX(18px); }
+
+    @media (max-width: 1200px) {
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+      .kanban { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">⚡ Job<span>Hunter</span></div>
+  <div class="nav">
+    <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="showPage('jobs')" id="nav-jobs"><span class="nav-icon">🔍</span> Vagas <span class="badge" id="jobs-count">0</span></div>
+    <div class="nav-item" onclick="showPage('applications')" id="nav-applications"><span class="nav-icon">📋</span> Candidaturas</div>
+    <div class="nav-item" onclick="showPage('cv')" id="nav-cv"><span class="nav-icon">🤖</span> Análise CV</div>
+    <div class="nav-item" onclick="showPage('schedules')" id="nav-schedules"><span class="nav-icon">⏰</span> Agendamentos</div>
+    <div class="nav-item" onclick="showPage('profile')" id="nav-profile"><span class="nav-icon">👤</span> Perfil</div>
+  </div>
+</nav>
+
+<div class="main">
+
+  <!-- DASHBOARD -->
+  <div id="page-dashboard">
+    <div class="header">
+      <div class="page-title">Dashboard</div>
+      <div class="header-actions">
+        <button class="btn btn-ai" onclick="showPage('cv')">🤖 Analisar CV</button>
+        <button class="btn btn-primary" onclick="openScrapeModal()">🔍 Buscar Vagas</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="ai-banner" id="ai-banner">
+        <div class="ai-banner-icon">🤖</div>
+        <div class="ai-banner-content">
+          <div class="ai-banner-title">Análise de Currículo com IA</div>
+          <div class="ai-banner-sub">Faça upload do seu CV para extrair skills, sugerir palavras-chave e calcular match com cada vaga automaticamente.</div>
+        </div>
+        <div class="ai-banner-actions"><button class="btn btn-ai" onclick="showPage('cv')">Analisar agora →</button></div>
+      </div>
+      <div class="cv-result" id="cv-result-banner">
+        <div class="cv-result-header">
+          <div class="cv-result-title">✨ Perfil analisado pela IA</div>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="showPage('cv')">Ver detalhes →</button>
+        </div>
+        <div id="cv-chips-container" class="cv-chips"></div>
+        <div id="cv-summary-banner" class="cv-summary-text"></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card purple"><div class="stat-label">Total Vagas</div><div class="stat-value" id="stat-total-jobs">—</div><div class="stat-sub">encontradas</div></div>
+        <div class="stat-card cyan"><div class="stat-label">Candidaturas</div><div class="stat-value" id="stat-total-apps">—</div><div class="stat-sub">enviadas</div></div>
+        <div class="stat-card amber"><div class="stat-label">Entrevistas</div><div class="stat-value" id="stat-interviews">—</div><div class="stat-sub">agendadas</div></div>
+        <div class="stat-card green"><div class="stat-label">Ofertas</div><div class="stat-value" id="stat-offers">—</div><div class="stat-sub">recebidas</div></div>
+        <div class="stat-card red"><div class="stat-label">Rejeições</div><div class="stat-value" id="stat-rejected">—</div><div class="stat-sub">recebidas</div></div>
+      </div>
+      <div class="section-header">
+        <div class="section-title">Últimas Vagas Encontradas</div>
+        <button class="btn btn-ghost" onclick="showPage('jobs')">Ver todas →</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Vaga</th><th>Fonte</th><th>Localização</th><th>Match IA</th><th>Ações</th></tr></thead>
+          <tbody id="dashboard-jobs-tbody"><tr><td colspan="5" class="loading"><div class="spinner"></div> Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- JOBS -->
+  <div id="page-jobs" style="display:none">
+    <div class="header">
+      <div class="page-title">Vagas Encontradas</div>
+      <div class="header-actions">
+        <button class="btn btn-ghost" onclick="clearSourceJobs()" id="clear-source-btn" style="display:none">🗑 Limpar fonte</button>
+        <button class="btn btn-ghost" onclick="clearAllJobs()" style="color:var(--red);border-color:var(--red)">🗑 Limpar tudo</button>
+        <button class="btn btn-primary" onclick="openScrapeModal()">🔍 Nova Busca</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="filters">
+        <input class="search-input" type="text" placeholder="Buscar vagas..." oninput="filterJobs(this.value)" />
+        <select class="filter-select" onchange="filterBySource(this.value)">
+          <option value="">Todas as fontes</option>
+          <optgroup label="🇧🇷 Brasil Tech">
+            <option value="gupy">Gupy</option>
+            <option value="inhire">Inhire</option>
+            <option value="geekhunter">GeekHunter</option>
+            <option value="programathor">Programathor</option>
+            <option value="hipsters">Hipsters.jobs</option>
+            <option value="apinfo">Apinfo</option>
+            <option value="revelo">Revelo</option>
+            <option value="otta">Otta</option>
+          </optgroup>
+          <optgroup label="🇧🇷 Brasil Geral">
+            <option value="vagas_br">Vagas.com.br</option>
+            <option value="catho">Catho</option>
+            <option value="infojobs">InfoJobs</option>
+            <option value="99jobs">99Jobs</option>
+            <option value="solides">Sólides Vagas</option>
+            <option value="bne">BNE</option>
+            <option value="empregos_br">Empregos.com.br</option>
+            <option value="trabalha_brasil">Trabalha Brasil</option>
+            <option value="sine">Emprega Brasil (SINE)</option>
+            <option value="ciee">CIEE</option>
+            <option value="trovit">Trovit</option>
+            <option value="csod">Corporativos</option>
+          </optgroup>
+          <optgroup label="🌍 Global">
+            <option value="glassdoor">Glassdoor</option>
+            <option value="indeed">Indeed BR</option>
+            <option value="wellfound">Wellfound</option>
+            <option value="jooble">Jooble</option>
+            <option value="otta">Otta</option>
+            <option value="dice">Dice</option>
+            <option value="builtin">Built In</option>
+            <option value="ziprecruiter">ZipRecruiter</option>
+            <option value="monster">Monster</option>
+          </optgroup>
+          <optgroup label="🏠 Remoto &amp; Freelance">
+            <option value="remoteok">RemoteOK</option>
+            <option value="weworkremotely">We Work Remotely</option>
+            <option value="remotar">Remotar</option>
+            <option value="workana">Workana</option>
+          </optgroup>
+        </select>
+        <select class="filter-select" onchange="filterByStatus(this.value)">
+          <option value="">Todos os status</option>
+          <option value="new">Novas</option>
+          <option value="saved">Salvas</option>
+        </select>
+        <div class="match-toggle" id="match-toggle" onclick="toggleMatchFilter()">
+          <div class="match-dot"></div>
+          Só alto match
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Vaga / Empresa</th><th>Fonte</th><th>Localização</th><th>Modalidade</th><th>Match IA</th><th>Ações</th></tr></thead>
+          <tbody id="jobs-tbody"><tr><td colspan="6" class="loading"><div class="spinner"></div> Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATIONS -->
+  <div id="page-applications" style="display:none">
+    <div class="header"><div class="page-title">Candidaturas</div></div>
+    <div class="content">
+      <div class="kanban" id="kanban-board"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
+    </div>
+  </div>
+
+  <!-- CV ANALYSIS -->
+  <div id="page-cv" style="display:none">
+    <div class="header"><div class="page-title">🤖 Análise de Currículo com IA</div></div>
+    <div class="content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+        <div>
+          <div class="profile-card" style="margin-bottom:16px">
+            <div class="section-title" style="margin-bottom:16px">Upload do Currículo</div>
+            <div class="upload-area" id="upload-area" onclick="document.getElementById('cv-file-input').click()"
+              ondragover="event.preventDefault();this.classList.add('dragover')"
+              ondragleave="this.classList.remove('dragover')"
+              ondrop="handleDrop(event)">
+              <div class="upload-icon">📄</div>
+              <div class="upload-title">Arraste o PDF aqui</div>
+              <div class="upload-sub">ou clique para selecionar</div>
+            </div>
+            <input type="file" id="cv-file-input" accept=".pdf" onchange="handleFileSelect(this)" />
+            <div id="cv-file-name" style="margin-top:10px;font-size:13px;color:var(--green);display:none"></div>
+            <div style="margin-top:16px;display:flex;gap:8px">
+              <button class="btn btn-ai" style="flex:1" onclick="analyzeCv()" id="analyze-btn" disabled>✨ Analisar com IA</button>
+              <button class="btn btn-secondary" onclick="useGabrielProfile()" title="Carregar perfil do Gabriel">📋 Meu CV</button>
+            </div>
+          </div>
+          <div class="profile-card">
+            <div class="section-title" style="margin-bottom:12px">O que a IA faz</div>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--muted)">
+              <div style="display:flex;gap:10px"><span style="color:var(--accent)">→</span> Extrai suas skills técnicas automaticamente</div>
+              <div style="display:flex;gap:10px"><span style="color:var(--accent)">→</span> Identifica cargos ideais para o seu perfil</div>
+              <div style="display:flex;gap:10px"><span style="color:var(--accent)">→</span> Gera keywords otimizadas para buscas</div>
+              <div style="display:flex;gap:10px"><span style="color:var(--accent)">→</span> Calcula % de match com cada vaga</div>
+              <div style="display:flex;gap=10px"><span style="color:var(--accent)">→</span> Pré-preenche seu perfil automaticamente</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div id="cv-thinking" style="display:none">
+            <div class="profile-card" style="margin-bottom:16px">
+              <div class="ai-thinking"><div class="spinner"></div><span>Analisando CV com IA<span class="dots"><span>.</span><span>.</span><span>.</span></span></span></div>
+              <div class="ai-output" id="cv-stream-output"></div>
+            </div>
+          </div>
+
+          <div id="cv-analysis-result" style="display:none">
+            <div class="profile-card" style="margin-bottom:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <div class="section-title">✨ Resultado da Análise</div>
+                <button class="btn btn-primary" style="font-size:12px" onclick="applyProfileFromCv()">Aplicar ao perfil</button>
+              </div>
+              <div style="margin-bottom:14px"><label>Cargos sugeridos</label><div id="cv-roles" class="cv-chips" style="margin-top:6px"></div></div>
+              <div style="margin-bottom:14px"><label>Skills detectadas</label><div id="cv-skills" class="cv-chips" style="margin-top:6px"></div></div>
+              <div style="margin-bottom:14px"><label>Keywords para busca</label><div id="cv-keywords" class="cv-chips" style="margin-top:6px"></div></div>
+              <div><label>Análise do perfil</label><div id="cv-analysis-text" style="margin-top:6px;font-size:13px;color:var(--muted);line-height:1.7;background:var(--surface2);border-radius:8px;padding:14px"></div></div>
+            </div>
+            <div class="profile-card">
+              <div class="section-title" style="margin-bottom:12px">Top vagas por match</div>
+              <div id="cv-matched-jobs"><div style="font-size:13px;color:var(--muted)">Execute uma busca de vagas primeiro.</div></div>
+            </div>
+          </div>
+
+          <div id="cv-placeholder" class="profile-card">
+            <div style="text-align:center;padding:32px;color:var(--muted)">
+              <div style="font-size:48px;margin-bottom:12px">🤖</div>
+              <div style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px">Aguardando análise</div>
+              <div style="font-size:13px">Faça upload do seu PDF ou clique em "Meu CV" para carregar o perfil pré-configurado.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- SCHEDULES -->
+  <div id="page-schedules" style="display:none">
+    <div class="header">
+      <div class="page-title">⏰ Agendamentos</div>
+      <div class="header-actions">
+        <button class="btn btn-primary" onclick="openNewSchedule()">+ Novo Agendamento</button>
+      </div>
+    </div>
+    <div class="content">
+      <!-- Email config banner -->
+      <div id="email-banner" style="display:none" class="ai-banner" style="margin-bottom:20px">
+        <div class="ai-banner-icon">📧</div>
+        <div class="ai-banner-content">
+          <div class="ai-banner-title">Configure notificações por e-mail</div>
+          <div class="ai-banner-sub">Adicione SMTP_HOST, SMTP_USER, SMTP_PASS e NOTIFY_EMAIL no arquivo .env para receber alertas quando novas vagas forem encontradas.</div>
+        </div>
+      </div>
+      <div id="schedules-list">
+        <div class="loading"><div class="spinner"></div> Carregando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Schedule Modal -->
+  <div class="modal-backdrop" id="schedule-modal" style="display:none">
+    <div class="modal">
+      <div class="modal-title">⏰ Novo Agendamento</div>
+      <div class="form-group"><label>Nome</label><input type="text" id="sch-name" placeholder="Ex: Busca diária Java" /></div>
+      <div class="form-group"><label>Palavras-chave</label><input type="text" id="sch-keywords" placeholder="Java, Spring Boot, backend" /></div>
+      <div class="form-group"><label>Localização</label><input type="text" id="sch-location" placeholder="Uberlândia, Remoto (opcional)" /></div>
+      <div class="form-group">
+        <label>Horário (Cron Expression)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn btn-ghost" style="font-size:12px" onclick="setCron('0 8 * * *')">Diário 8h</button>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="setCron('0 8 * * 1-5')">Dias úteis 8h</button>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="setCron('0 8,18 * * *')">2x/dia</button>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="setCron('0 8 * * 1')">Semanal (seg)</button>
+        </div>
+        <input type="text" id="sch-cron" placeholder="0 8 * * *" value="0 8 * * *" />
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Formato: minuto hora dia mês dia_semana</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label" style="display:inline-flex">
+          <input type="checkbox" id="sch-notify" checked style="display:inline"> Notificar por e-mail quando encontrar vagas novas
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('schedule-modal').style.display='none'">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveSchedule()">Salvar Agendamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div id="page-profile" style="display:none">
+    <div class="header">
+      <div class="page-title">Meu Perfil</div>
+      <div class="header-actions"><button class="btn btn-primary" onclick="saveProfile()">💾 Salvar Perfil</button></div>
+    </div>
+    <div class="content">
+      <div class="profile-grid">
+        <div class="profile-card">
+          <div class="section-title" style="margin-bottom:16px">Dados Pessoais</div>
+          <div class="form-group"><label>Nome Completo</label><input type="text" id="p-name" placeholder="Seu nome" /></div>
+          <div class="form-group"><label>E-mail</label><input type="text" id="p-email" placeholder="email@exemplo.com" /></div>
+          <div class="form-group"><label>Telefone / WhatsApp</label><input type="text" id="p-phone" placeholder="+55 34 9 9999-9999" /></div>
+          <div class="form-group"><label>LinkedIn</label><input type="text" id="p-linkedin" placeholder="https://linkedin.com/in/..." /></div>
+          <div class="form-group"><label>GitHub</label><input type="text" id="p-github" placeholder="https://github.com/..." /></div>
+          <div class="form-group"><label>Portfolio / Site</label><input type="text" id="p-portfolio" placeholder="https://..." /></div>
+        </div>
+        <div class="profile-card">
+          <div class="section-title" style="margin-bottom:16px">Preferências de Busca</div>
+          <div class="form-group">
+            <label>Cargos Desejados</label>
+            <div class="tags-input-wrap" id="target-roles-wrap"></div>
+            <input type="text" id="target-roles-input" placeholder="Ex: Dev Full Stack (Enter para adicionar)" onkeydown="addTag('target_roles', this)" style="margin-top:6px" />
+          </div>
+          <div class="form-group">
+            <label>Localizações</label>
+            <div class="tags-input-wrap" id="target-locations-wrap"></div>
+            <input type="text" id="target-locations-input" placeholder="Ex: Uberlândia, Remoto (Enter)" onkeydown="addTag('target_locations', this)" style="margin-top:6px" />
+          </div>
+          <div class="form-group"><label>Salário Mínimo (R$)</label><input type="text" id="p-min-salary" placeholder="Ex: 5000" /></div>
+          <div class="form-group">
+            <label>Empresas na Lista Negra</label>
+            <div class="tags-input-wrap" id="blacklist-wrap"></div>
+            <input type="text" id="blacklist-input" placeholder="Empresa a ignorar (Enter)" onkeydown="addTag('blacklist_companies', this)" style="margin-top:6px" />
+          </div>
+        </div>
+        <div class="profile-card full">
+          <div class="section-title" style="margin-bottom:16px">Skills & Resumo</div>
+          <div class="form-group">
+            <label>Skills</label>
+            <div class="tags-input-wrap" id="skills-wrap"></div>
+            <input type="text" id="skills-input" placeholder="Ex: React, Node.js, PostgreSQL (Enter)" onkeydown="addTag('skills', this)" style="margin-top:6px" />
+          </div>
+          <div class="form-group"><label>Resumo / Objetivo</label><textarea id="p-summary" rows="4" placeholder="Breve descrição do seu perfil..."></textarea></div>
+          <div class="form-group"><label>Caminho do Currículo (PDF)</label><input type="text" id="p-resume" placeholder="/path/to/curriculo.pdf" /></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .main -->
+
+
+<!-- Scrape Progress Modal -->
+<div class="modal-backdrop" id="progress-modal" style="display:none">
+  <div class="progress-modal">
+    <div class="progress-header">
+      <div class="progress-title">🔍 Buscando Vagas...</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+        <div id="progress-status" style="font-size:13px;color:var(--muted)">Iniciando...</div>
+        <div id="progress-eta" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;display:none">
+          ⏱ ETA: <span id="eta-value">--</span> · <span id="elapsed-value">0s</span> decorrido
+        </div>
+      </div>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-bar" style="width:0%"></div></div>
+    <div class="progress-summary">
+      <div class="progress-stat"><div class="progress-stat-val" id="prog-total" style="color:var(--accent)">0</div><div class="progress-stat-lbl">Encontradas</div></div>
+      <div class="progress-stat"><div class="progress-stat-val" id="prog-new" style="color:var(--green)">0</div><div class="progress-stat-lbl">Novas</div></div>
+      <div class="progress-stat"><div class="progress-stat-val" id="prog-done" style="color:var(--accent2)">0</div><div class="progress-stat-lbl">Fontes OK</div></div>
+    </div>
+    <div class="source-list" id="source-list"></div>
+    <div class="modal-footer" style="display:none" id="progress-footer">
+      <button class="btn btn-ghost" onclick="closeProgressModal()">Fechar</button>
+      <button class="btn btn-primary" onclick="closeProgressModal();showPage('jobs')">Ver Vagas →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scrape Modal -->
+<div class="modal-backdrop" id="scrape-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-title">🔍 Nova Busca de Vagas</div>
+    <div class="form-group"><label>Palavras-chave</label><input type="text" id="search-keywords" placeholder="Ex: Desenvolvedor Java Spring Boot backend" /></div>
+    <div class="form-group"><label>Localização (opcional)</label><input type="text" id="search-location" placeholder="Ex: Uberlândia, São Paulo, Remoto" /></div>
+    <div class="form-group">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label style="margin-bottom:0">Fontes de Busca</label>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="selectAllSources(true)">✅ Todas</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="selectAllSources(false)">⬜ Nenhuma</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="selectDefaultSources()">⭐ Padrão</button>
+        </div>
+      </div>
+                  <div class="checkbox-group" id="sources-checkboxes">
+        <div style="width:100%;font-size:11px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">🇧🇷 Brasil — Tech</div>
+        <label class="checkbox-label"><input type="checkbox" value="gupy" checked> 🟢 Gupy</label>
+        <label class="checkbox-label"><input type="checkbox" value="inhire" checked> 🔵 Inhire</label>
+        <label class="checkbox-label"><input type="checkbox" value="geekhunter" checked> 🟣 GeekHunter</label>
+        <label class="checkbox-label"><input type="checkbox" value="programathor"> ⚡ Programathor</label>
+        <label class="checkbox-label"><input type="checkbox" value="hipsters"> 🎧 Hipsters.jobs</label>
+        <label class="checkbox-label"><input type="checkbox" value="apinfo"> 📋 Apinfo</label>
+        <label class="checkbox-label"><input type="checkbox" value="revelo"> 🚀 Revelo</label>
+        <label class="checkbox-label"><input type="checkbox" value="otta"> 🦄 Otta</label>
+
+        <div style="width:100%;font-size:11px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:10px;margin-bottom:4px">🇧🇷 Brasil — Geral</div>
+        <label class="checkbox-label"><input type="checkbox" value="vagas_br"> 💼 Vagas.com.br</label>
+        <label class="checkbox-label"><input type="checkbox" value="catho"> 🔴 Catho</label>
+        <label class="checkbox-label"><input type="checkbox" value="infojobs"> 🩵 InfoJobs</label>
+        <label class="checkbox-label"><input type="checkbox" value="99jobs"> 9️⃣ 99Jobs</label>
+        <label class="checkbox-label"><input type="checkbox" value="solides"> 🟡 Sólides Vagas</label>
+        <label class="checkbox-label"><input type="checkbox" value="bne"> 📂 BNE</label>
+        <label class="checkbox-label"><input type="checkbox" value="empregos_br"> 💻 Empregos.com.br</label>
+        <label class="checkbox-label"><input type="checkbox" value="trabalha_brasil"> 🇧🇷 Trabalha Brasil</label>
+        <label class="checkbox-label"><input type="checkbox" value="sine"> 🏛️ Emprega Brasil (SINE)</label>
+        <label class="checkbox-label"><input type="checkbox" value="ciee"> 🎓 CIEE (Estágio)</label>
+        <label class="checkbox-label"><input type="checkbox" value="trovit"> 🔎 Trovit</label>
+        <label class="checkbox-label"><input type="checkbox" value="csod"> 🏦 Corporativos (CSOD)</label>
+
+        <div style="width:100%;font-size:11px;color:var(--accent3);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:10px;margin-bottom:4px">🌍 Global</div>
+        <label class="checkbox-label"><input type="checkbox" value="glassdoor"> 🟠 Glassdoor</label>
+        <label class="checkbox-label"><input type="checkbox" value="indeed"> 🔍 Indeed BR</label>
+        <label class="checkbox-label"><input type="checkbox" value="wellfound"> 🦅 Wellfound</label>
+        <label class="checkbox-label"><input type="checkbox" value="jooble"> 🌐 Jooble</label>
+        <label class="checkbox-label"><input type="checkbox" value="dice"> 🎲 Dice</label>
+        <label class="checkbox-label"><input type="checkbox" value="builtin"> 🏗️ Built In</label>
+        <label class="checkbox-label"><input type="checkbox" value="ziprecruiter"> 📦 ZipRecruiter</label>
+        <label class="checkbox-label"><input type="checkbox" value="monster"> 👾 Monster</label>
+
+        <div style="width:100%;font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:10px;margin-bottom:4px">🏠 Remoto & Freelance</div>
+        <label class="checkbox-label"><input type="checkbox" value="remoteok" checked> ✅ RemoteOK</label>
+        <label class="checkbox-label"><input type="checkbox" value="weworkremotely"> 💻 We Work Remotely</label>
+        <label class="checkbox-label"><input type="checkbox" value="remotar"> 🏡 Remotar</label>
+        <label class="checkbox-label"><input type="checkbox" value="workana"> 🖥️ Workana (Freelance)</label>
+      </div>
+    </div>
+    <div class="form-group"><label class="checkbox-label" style="display:inline-flex"><input type="checkbox" id="search-remote"> Apenas vagas remotas</label></div>
+    <div class="form-group">
+      <label>Motor de expansão de keywords</label>
+      <div id="ollama-status-box" style="background:var(--surface2);border-radius:8px;padding:12px;display:flex;align-items:center;gap:10px">
+        <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>
+        <span style="font-size:13px;color:var(--muted)">Verificando Ollama...</span>
+      </div>
+    </div>
+
+    <!-- Expansion preview -->
+    <div id="expansion-preview" style="display:none;background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:4px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+        ✨ Keywords expandidas pela IA
+      </div>
+      <div id="expansion-summary" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+      <div id="expansion-chips" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeScrapeModal()">Cancelar</button>
+      <button class="btn btn-secondary" onclick="previewExpansion()" id="expand-btn">✨ Expandir Keywords</button>
+      <button class="btn btn-primary" onclick="runScrape()" id="scrape-btn">🚀 Buscar Vagas</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const API = window.location.protocol === 'file:' ? 'http://localhost:3001/api' : window.location.origin + '/api';
+const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
+
+let allJobs = [], filteredJobs = [], profile = {}, cvAnalysis = null, cvFileBase64 = null, onlyHighMatch = false;
+const tagState = { skills: [], target_roles: [], target_locations: [], blacklist_companies: [] };
+
+// Gabriel's data extracted from CV upload
+const GABRIEL_CV_DATA = {
+  nome: 'Gabriel Fernando',
+  cargo_atual: 'Desenvolvedor Full Stack',
+  anos_experiencia: 5,
+  skills: ['Java', 'Spring Boot', 'Microsserviços', 'React.js', 'Angular', 'Vue.js', 'PostgreSQL', 'SQL Server', 'RabbitMQ', 'Kafka', 'Docker', 'AWS', 'Grafana', 'Prometheus', 'JUnit', 'REST API', 'Python', 'Firebase', 'Crystal Reports'],
+  roles: ['Desenvolvedor Full Stack Java', 'Engenheiro de Software Backend', 'Java Developer Spring Boot', 'Backend Engineer Sênior', 'Dev Full Stack'],
+  keywords: ['Java', 'Spring Boot', 'microsserviços', 'backend', 'full stack', 'AWS', 'Docker', 'Kafka', 'REST API', 'PostgreSQL', 'Spring', 'JVM'],
+  nivel: 'senior',
+  resumo_ia: 'Engenheiro Full Stack Sênior com 5+ anos em Java/Spring Boot e sistemas de alta criticidade. Experiência em ecossistemas Magalu/Unilever (Pricing, SRE) e GovTech (ERP tributário). Forte em arquitetura assíncrona Kafka/RabbitMQ, cloud AWS e observabilidade com Grafana.'
+};
+const GABRIEL_PROFILE = {
+  name: 'Gabriel Fernando',
+  email: 'gabriel_nando_@hotmail.com',
+  phone: '34998884925',
+  linkedin: 'https://www.linkedin.com/in/gabrielfernandobispo',
+  skills: GABRIEL_CV_DATA.skills,
+  target_roles: GABRIEL_CV_DATA.roles,
+  target_locations: ['Uberlândia', 'Remoto', 'São Paulo'],
+  blacklist_companies: [],
+  summary: GABRIEL_CV_DATA.resumo_ia
+};
+
+// ── Nav ───────────────────────────────────────────────────────────────────────
+function showPage(page) {
+  ['dashboard','jobs','applications','cv','schedules','profile'].forEach(p => {
+    const el = document.getElementById('page-' + p);
+    if (el) el.style.display = 'none';
+    const nav = document.getElementById('nav-' + p);
+    if (nav) nav.classList.remove('active');
+  });
+  document.getElementById('page-' + page).style.display = '';
+  document.getElementById('nav-' + page).classList.add('active');
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'jobs') loadJobs();
+  if (page === 'applications') loadApplications();
+  if (page === 'profile') loadProfile();
+  if (page === 'schedules') loadSchedules();
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  try {
+    const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  } catch (e) {
+    toast('Erro: ' + e.message, 'error');
+    throw e;
+  }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const stats = await api('/stats');
+    document.getElementById('stat-total-jobs').textContent = stats.total_jobs;
+    document.getElementById('stat-total-apps').textContent = stats.total_applications;
+    document.getElementById('stat-interviews').textContent = stats.interview;
+    document.getElementById('stat-offers').textContent = stats.offer;
+    document.getElementById('stat-rejected').textContent = stats.rejected;
+    document.getElementById('jobs-count').textContent = stats.total_jobs;
+    const jobs = await api('/jobs?limit=8');
+    if (cvAnalysis) scoreJobs(jobs);
+    renderJobsTable('dashboard-jobs-tbody', jobs, true);
+  } catch {}
+}
+
+// ── Jobs ──────────────────────────────────────────────────────────────────────
+async function loadJobs() {
+  document.getElementById('jobs-tbody').innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div> Carregando...</td></tr>';
+  try {
+    allJobs = await api('/jobs?limit=200');
+    if (cvAnalysis) scoreJobs(allJobs);
+    filteredJobs = [...allJobs];
+    renderJobsTable('jobs-tbody', filteredJobs, false);
+  } catch {}
+}
+
+function filterJobs(q) {
+  const lower = q.toLowerCase();
+  filteredJobs = allJobs.filter(j => (j.title || '').toLowerCase().includes(lower) || (j.company || '').toLowerCase().includes(lower));
+  if (onlyHighMatch) filteredJobs = filteredJobs.filter(j => (j._match || 0) >= 70);
+  renderJobsTable('jobs-tbody', filteredJobs, false);
+}
+
+function filterBySource(src) {
+  currentSourceFilter = src;
+  const clearBtn = document.getElementById('clear-source-btn');
+  if (clearBtn) clearBtn.style.display = src ? 'flex' : 'none';
+  filteredJobs = src ? allJobs.filter(j => j.source === src) : [...allJobs];
+  if (onlyHighMatch) filteredJobs = filteredJobs.filter(j => (j._match || 0) >= 70);
+  renderJobsTable('jobs-tbody', filteredJobs, false);
+}
+
+function filterByStatus(status) {
+  filteredJobs = status ? allJobs.filter(j => j.status === status) : [...allJobs];
+  if (onlyHighMatch) filteredJobs = filteredJobs.filter(j => (j._match || 0) >= 70);
+  renderJobsTable('jobs-tbody', filteredJobs, false);
+}
+
+function toggleMatchFilter() {
+  onlyHighMatch = !onlyHighMatch;
+  document.getElementById('match-toggle').classList.toggle('active', onlyHighMatch);
+  filteredJobs = onlyHighMatch ? allJobs.filter(j => (j._match || 0) >= 70) : [...allJobs];
+  renderJobsTable('jobs-tbody', filteredJobs, false);
+}
+
+// ── Match scoring ─────────────────────────────────────────────────────────────
+function scoreJobs(jobs) {
+  // Use expanded search terms if available (more accurate), fallback to CV analysis
+  const baseTerms = cvAnalysis
+    ? [...new Set([...(cvAnalysis.skills || []), ...(cvAnalysis.keywords || [])])]
+    : [];
+  const expandedTerms = lastExpanded?.allTerms || [];
+  const allTerms = [...new Set([...baseTerms, ...expandedTerms].map(s => s.toLowerCase()))];
+  if (!allTerms.length) return;
+  for (const job of jobs) {
+    const text = ((job.title || '') + ' ' + (job.description || '') + ' ' + (job.requirements || '')).toLowerCase();
+    let hits = 0;
+    for (const t of allTerms) if (text.includes(t)) hits++;
+    job._match = allTerms.length > 0 ? Math.min(100, Math.round((hits / Math.min(allTerms.length, 15)) * 100)) : 0;
+    // Title boost for Java/Spring/backend roles
+    const title = (job.title || '').toLowerCase();
+    for (const boost of ['java', 'spring', 'backend', 'full stack', 'fullstack']) {
+      if (title.includes(boost)) { job._match = Math.min(100, job._match + 15); break; }
+    }
+  }
+}
+
+function matchBadge(score) {
+  if (score === undefined || score === null) return '<span style="color:var(--muted);font-size:12px">—</span>';
+  const cls = score >= 70 ? 'match-high' : score >= 40 ? 'match-mid' : 'match-low';
+  const color = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--accent3)' : 'var(--muted)';
+  return '<span class="match-score ' + cls + '">' + score + '%<div class="match-bar" style="display:inline-block"><div class="match-bar-fill" style="width:' + score + '%;background:' + color + '"></div></div></span>';
+}
+
+function renderJobsTable(tbodyId, jobs, compact) {
+  const tbody = document.getElementById(tbodyId);
+  const cols = compact ? 5 : 6;
+  if (!jobs.length) {
+    tbody.innerHTML = '<tr><td colspan="' + cols + '" class="empty"><div class="empty-icon">🔍</div>Nenhuma vaga encontrada.<br>Use "Buscar Vagas" para começar.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = jobs.map(j => '<tr>' +
+    '<td><div class="job-title">' + esc(j.title) + '</div><div class="job-company">' + esc(j.company) + '</div></td>' +
+    '<td><span class="source-badge src-' + j.source + '">' + j.source + '</span></td>' +
+    '<td style="color:var(--muted);font-size:12px">' + esc(j.location || '—') + '</td>' +
+    (!compact ? '<td>' + (j.remote ? '<span class="remote-tag remote-' + j.remote + '">' + j.remote + '</span>' : '—') + '</td>' : '') +
+    '<td>' + matchBadge(j._match) + '</td>' +
+    '<td><div class="actions">' +
+      '<button class="icon-btn" title="Abrir" onclick="window.open(\'' + esc(j.url) + '\',\'_blank\')">↗</button>' +
+      '<button class="icon-btn apply" title="Candidatar" onclick="applyToJob(\'' + j.id + '\',\'' + esc(j.title) + '\',\'' + j.source + '\')">' + (j.source === 'gupy' ? '⚡' : '✓') + '</button>' +
+      '<button class="icon-btn" title="Salvar" onclick="saveJob(\'' + j.id + '\')">🔖</button>' +
+    '</div></td>' +
+  '</tr>').join('');
+}
+
+async function applyToJob(jobId, title, source) {
+  const isGupy = source === 'gupy';
+  const msg = isGupy
+    ? 'Candidatar-se para "' + title + '"?\n\nGupy Easy Apply: envio automático sem login, usando seu perfil.'
+    : 'Candidatar-se para "' + title + '"?\n\nO sistema abrirá e preencherá o formulário automaticamente.';
+
+  if (!confirm(msg)) return;
+  toast('⏳ Processando candidatura...', 'info');
+
+  try {
+    const result = await api('/apply/' + jobId, { method: 'POST', body: JSON.stringify({}) });
+
+    if (result.method === 'easy_apply' && result.success) {
+      toast('✅ Candidatura enviada via Gupy Easy Apply!' + (result.application_id ? ' (ID: ' + result.application_id + ')' : ''), 'success');
+    } else if (result.method === 'redirect') {
+      // Not Easy Apply — open the job page directly
+      toast('🔗 Abrindo formulário completo no browser...', 'info');
+      window.open(result.apply_url || '', '_blank');
+    } else if (result.success) {
+      toast('✅ Formulário preenchido! Verifique antes de enviar.', 'success');
+    } else {
+      toast('⚠️ ' + result.message, 'error');
+      // Open URL as fallback if available
+      if (result.apply_url) window.open(result.apply_url, '_blank');
+    }
+  } catch (err) {
+    toast('Erro: ' + err.message, 'error');
+  }
+}
+
+async function saveJob(jobId) {
+  await api('/jobs/' + jobId + '/status', { method: 'PATCH', body: JSON.stringify({ status: 'saved' }) });
+  toast('Vaga salva!', 'success');
+}
+
+// ── Applications ──────────────────────────────────────────────────────────────
+async function loadApplications() {
+  document.getElementById('kanban-board').innerHTML = '<div class="loading"><div class="spinner"></div> Carregando...</div>';
+  try {
+    const apps = await api('/applications');
+    const cols = {
+      pending: { label: 'Pendente', color: 'var(--muted)', items: [] },
+      applied:  { label: 'Aplicado', color: 'var(--accent)', items: [] },
+      interview:{ label: 'Entrevista', color: 'var(--accent3)', items: [] },
+      offer:    { label: 'Oferta', color: 'var(--green)', items: [] },
+      rejected: { label: 'Rejeitado', color: 'var(--red)', items: [] },
+    };
+    for (const app of apps) if (cols[app.status]) cols[app.status].items.push(app);
+    document.getElementById('kanban-board').innerHTML = Object.entries(cols).map(([, col]) =>
+      '<div class="kanban-col">' +
+        '<div class="kanban-header"><span style="color:' + col.color + '">' + col.label + '</span><span style="color:var(--muted);font-size:12px;font-family:\'DM Mono\',monospace">' + col.items.length + '</span></div>' +
+        '<div class="kanban-body">' +
+          (col.items.length === 0 ? '<div style="color:var(--muted);font-size:12px;padding:8px">Nenhuma</div>' :
+           col.items.map(a => '<div class="kanban-card"><div class="kanban-card-title">' + esc(a.title || '—') + '</div><div class="kanban-card-company">' + esc(a.company || '—') + '</div><div class="kanban-card-date">' + (a.applied_at ? new Date(a.applied_at).toLocaleDateString('pt-BR') : '—') + '</div></div>').join('')) +
+        '</div>' +
+      '</div>'
+    ).join('');
+  } catch {}
+}
+
+// ── CV Analysis ───────────────────────────────────────────────────────────────
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (file) readPdfFile(file);
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-area').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') readPdfFile(file);
+}
+function readPdfFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    cvFileBase64 = e.target.result.split(',')[1];
+    document.getElementById('cv-file-name').textContent = '✅ ' + file.name;
+    document.getElementById('cv-file-name').style.display = 'block';
+    document.getElementById('analyze-btn').disabled = false;
+    toast('PDF carregado! Clique em "Analisar com IA".', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analyzeCv() {
+  if (!cvFileBase64) return toast('Selecione um PDF primeiro', 'error');
+  document.getElementById('cv-analysis-result').style.display = 'none';
+  document.getElementById('cv-placeholder').style.display = 'none';
+  document.getElementById('cv-thinking').style.display = 'block';
+  document.getElementById('cv-stream-output').textContent = '';
+  document.getElementById('analyze-btn').disabled = true;
+  try {
+    const response = await fetch(CLAUDE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: 'Analise o currículo e responda APENAS com JSON válido, sem texto extra:\n{"nome":"...","cargo_atual":"...","anos_experiencia":N,"skills":["..."],"roles":["cargo1","cargo2","cargo3"],"keywords":["k1","k2",...],"nivel":"junior|pleno|senior|especialista","resumo_ia":"2-3 frases sobre o perfil"}\nSkills: tecnologias, linguagens, frameworks. Roles: cargos como aparecem em vagas no Brasil. Keywords: 10 termos para buscas em plataformas como Gupy e Catho.',
+        messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: cvFileBase64 } }, { type: 'text', text: 'Analise e retorne o JSON.' }] }]
+      })
+    });
+    const data = await response.json();
+    const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
+    document.getElementById('cv-stream-output').textContent = raw;
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    cvAnalysis = JSON.parse(cleaned);
+    showCvResult(cvAnalysis);
+    if (allJobs.length > 0) { scoreJobs(allJobs); filteredJobs = [...allJobs]; }
+  } catch (err) {
+    toast('Erro na análise: ' + err.message, 'error');
+  } finally {
+    document.getElementById('cv-thinking').style.display = 'none';
+    document.getElementById('analyze-btn').disabled = false;
+  }
+}
+
+function useGabrielProfile() {
+  cvAnalysis = GABRIEL_CV_DATA;
+  showCvResult(cvAnalysis);
+  if (allJobs.length > 0) { scoreJobs(allJobs); filteredJobs = [...allJobs]; }
+  toast('✅ Perfil carregado do seu CV!', 'success');
+}
+
+function showCvResult(data) {
+  document.getElementById('cv-analysis-result').style.display = 'block';
+  document.getElementById('cv-thinking').style.display = 'none';
+  document.getElementById('cv-placeholder').style.display = 'none';
+  document.getElementById('cv-roles').innerHTML = (data.roles || []).map(r => '<span class="cv-chip role">' + esc(r) + '</span>').join('');
+  document.getElementById('cv-skills').innerHTML = (data.skills || []).map(s => '<span class="cv-chip tech">' + esc(s) + '</span>').join('');
+  document.getElementById('cv-keywords').innerHTML = (data.keywords || []).map(k => '<span class="cv-chip keyword">' + esc(k) + '</span>').join('');
+  document.getElementById('cv-analysis-text').textContent = data.resumo_ia || '';
+  // Dashboard banner
+  document.getElementById('ai-banner').style.display = 'none';
+  const banner = document.getElementById('cv-result-banner');
+  banner.classList.add('visible');
+  document.getElementById('cv-summary-banner').textContent = data.resumo_ia || '';
+  document.getElementById('cv-chips-container').innerHTML = (data.skills || []).slice(0,6).map(s => '<span class="cv-chip tech">' + esc(s) + '</span>').join('') + (data.nivel ? '<span class="cv-chip role">' + data.nivel + '</span>' : '');
+  // Matched jobs
+  if (allJobs.length > 0) {
+    const top = [...allJobs].sort((a,b) => (b._match||0)-(a._match||0)).slice(0,5);
+    document.getElementById('cv-matched-jobs').innerHTML = top.map(j =>
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<div><div style="font-size:13px;font-weight:600">' + esc(j.title) + '</div>' +
+        '<div style="font-size:12px;color:var(--muted)">' + esc(j.company) + ' · <span class="source-badge src-' + j.source + '">' + j.source + '</span></div></div>' +
+        matchBadge(j._match) +
+      '</div>'
+    ).join('');
+  }
+  // Pre-fill scrape keywords
+  if (data.roles?.length) document.getElementById('search-keywords').value = data.roles.slice(0,2).join(', ');
+}
+
+function applyProfileFromCv() {
+  if (!cvAnalysis) return;
+  tagState.skills = cvAnalysis.skills || [];
+  tagState.target_roles = cvAnalysis.roles || [];
+  renderTags('skills', 'skills-wrap');
+  renderTags('target_roles', 'target-roles-wrap');
+  showPage('profile');
+  toast('✅ Perfil preenchido com dados do CV!', 'success');
+}
+
+// ── Profile ───────────────────────────────────────────────────────────────────
+async function loadProfile() {
+  try {
+    profile = await api('/profile');
+    if (!profile.name) profile = GABRIEL_PROFILE;
+  } catch { profile = GABRIEL_PROFILE; }
+  document.getElementById('p-name').value = profile.name || '';
+  document.getElementById('p-email').value = profile.email || '';
+  document.getElementById('p-phone').value = profile.phone || '';
+  document.getElementById('p-linkedin').value = profile.linkedin || '';
+  document.getElementById('p-github').value = profile.github || '';
+  document.getElementById('p-portfolio').value = profile.portfolio || '';
+  document.getElementById('p-summary').value = profile.summary || '';
+  document.getElementById('p-resume').value = profile.resume_path || '';
+  document.getElementById('p-min-salary').value = profile.min_salary || '';
+  tagState.skills = profile.skills || [];
+  tagState.target_roles = profile.target_roles || [];
+  tagState.target_locations = profile.target_locations || [];
+  tagState.blacklist_companies = profile.blacklist_companies || [];
+  renderTags('skills', 'skills-wrap');
+  renderTags('target_roles', 'target-roles-wrap');
+  renderTags('target_locations', 'target-locations-wrap');
+  renderTags('blacklist_companies', 'blacklist-wrap');
+}
+
+async function saveProfile() {
+  const data = {
+    name: document.getElementById('p-name').value,
+    email: document.getElementById('p-email').value,
+    phone: document.getElementById('p-phone').value,
+    linkedin: document.getElementById('p-linkedin').value,
+    github: document.getElementById('p-github').value,
+    portfolio: document.getElementById('p-portfolio').value,
+    summary: document.getElementById('p-summary').value,
+    resume_path: document.getElementById('p-resume').value,
+    min_salary: parseInt(document.getElementById('p-min-salary').value) || null,
+    ...tagState,
+  };
+  await api('/profile', { method: 'PUT', body: JSON.stringify(data) });
+  toast('✅ Perfil salvo!', 'success');
+}
+
+// ── Scrape ────────────────────────────────────────────────────────────────────
+async function openScrapeModal() {
+  document.getElementById('scrape-modal').style.display = 'flex';
+  // Check Ollama status each time modal opens
+  try {
+    const status = await api('/ollama-status');
+    const box = document.getElementById('ollama-status-box');
+    if (status.available) {
+      box.innerHTML = `
+        <span style="color:var(--green);font-size:18px">🦙</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--green)">Ollama disponível</div>
+          <div style="font-size:11px;color:var(--muted)">Modelo: ${esc(status.model)} · Expansão local gratuita ativa</div>
+        </div>`;
+    } else {
+      box.innerHTML = `
+        <span style="font-size:18px">📚</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--accent3)">Ollama não detectado — usando dicionário local</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">
+            Para expansão com IA gratuita: 
+            <code style="background:var(--tag);padding:1px 5px;border-radius:3px">curl -fsSL https://ollama.ai/install.sh | sh</code>
+            depois
+            <code style="background:var(--tag);padding:1px 5px;border-radius:3px">ollama pull llama3.2</code>
+          </div>
+        </div>`;
+    }
+  } catch {
+    document.getElementById('ollama-status-box').innerHTML =
+      '<span style="font-size:18px">📚</span><span style="font-size:13px;color:var(--muted)">Usando dicionário local de sinônimos</span>';
+  }
+  if (cvAnalysis?.roles?.length) document.getElementById('search-keywords').value = cvAnalysis.roles.slice(0,2).join(', ');
+  else if (tagState.target_roles.length) document.getElementById('search-keywords').value = tagState.target_roles.slice(0,2).join(', ');
+  if (tagState.target_locations.length) document.getElementById('search-location').value = tagState.target_locations[0];
+}
+function closeScrapeModal() { document.getElementById('scrape-modal').style.display = 'none'; }
+// ── SSE Progress tracking ─────────────────────────────────────────────────────
+let progTotal = 0, progNew = 0, progDone = 0, progTotalSources = 0;
+
+let _scrapeStartTime = 0;
+let _elapsedTimer = null;
+let _sourceTimes = {}; // track avg time per source type
+
+function openProgressModal(sources) {
+  progTotal = 0; progNew = 0; progDone = 0;
+  _scrapeStartTime = Date.now();
+  _sourceTimes = {};
+
+  // Start elapsed timer
+  if (_elapsedTimer) clearInterval(_elapsedTimer);
+  document.getElementById('progress-eta').style.display = 'flex';
+  _elapsedTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - _scrapeStartTime) / 1000);
+    document.getElementById('elapsed-value').textContent = elapsed + 's';
+
+    // ETA estimate: based on avg completion rate
+    if (progDone > 0 && progDone < progTotalSources) {
+      const avgTimePerSource = (Date.now() - _scrapeStartTime) / progDone;
+      const remaining = progTotalSources - progDone;
+      const etaSec = Math.ceil((avgTimePerSource * remaining) / 1000);
+      document.getElementById('eta-value').textContent = etaSec > 60
+        ? Math.ceil(etaSec / 60) + 'min'
+        : etaSec + 's';
+    } else if (progDone === 0) {
+      document.getElementById('eta-value').textContent = '--';
+    }
+  }, 1000);
+  document.getElementById('prog-total').textContent = '0';
+  document.getElementById('prog-new').textContent = '0';
+  document.getElementById('prog-done').textContent = '0';
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('progress-status').textContent = 'Iniciando...';
+  document.getElementById('progress-footer').style.display = 'none';
+
+  const sourceIcons = {
+    gupy:'🟢', inhire:'🔵', geekhunter:'🟣', remoteok:'✅', weworkremotely:'💻',
+    vagas_br:'💼', '99jobs':'9️⃣', glassdoor:'🟠', catho:'🔴', infojobs:'🩵',
+    programathor:'⚡', hipsters:'🎧', apinfo:'📋', remotar:'🏡', trabalha_brasil:'🇧🇷',
+    wellfound:'🦅', indeed:'🔍', dice:'🎲', builtin:'🏗️', ziprecruiter:'📦',
+    monster:'👾', revelo:'🚀', csod:'🏦',
+  };
+
+  const list = document.getElementById('source-list');
+  list.innerHTML = sources.map(s => `
+    <div class="source-row waiting" id="src-${s.replace(/[^a-z0-9]/g,'_')}">
+      <span class="source-icon">${sourceIcons[s] || '🔎'}</span>
+      <span class="source-name">${s}</span>
+      <span class="source-count" id="src-count-${s.replace(/[^a-z0-9]/g,'_')}">aguardando</span>
+    </div>
+  `).join('');
+
+  progTotalSources = sources.length;
+  document.getElementById('progress-modal').style.display = 'flex';
+}
+
+function closeProgressModal() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+  document.getElementById('progress-modal').style.display = 'none';
+}
+
+function updateSourceRow(source, status, count, raw, dur) {
+  const id = source.replace(/[^a-z0-9]/g,'_');
+  const row = document.getElementById('src-' + id);
+  const countEl = document.getElementById('src-count-' + id);
+  if (!row) return;
+  row.className = 'source-row ' + status;
+  if (status === 'running') {
+    countEl.textContent = '⏳ buscando...';
+  } else if (status === 'done') {
+    countEl.className = 'source-count' + (count > 0 ? ' has-jobs' : '');
+    countEl.textContent = count + ' novas' + (raw && raw !== count ? ' (' + raw + ' total)' : '');
+    if (dur) {
+      const existing = row.querySelector('.source-dur');
+      if (existing) existing.remove();
+      row.querySelector('.source-name').insertAdjacentHTML('afterend',
+        '<span class="source-dur">' + (dur/1000).toFixed(1) + 's</span>');
+    }
+  } else if (status === 'error') {
+    countEl.textContent = '❌ erro';
+  }
+}
+
+async function runScrape() {
+  const keywords = document.getElementById('search-keywords').value.split(',').map(k => k.trim()).filter(Boolean);
+  if (!keywords.length) return toast('Informe pelo menos uma palavra-chave', 'error');
+  const sources = [...document.querySelectorAll('.checkbox-group input:checked')].map(cb => cb.value);
+  if (!sources.length) return toast('Selecione ao menos uma fonte', 'error');
+
+  closeScrapeModal();
+  openProgressModal(sources);
+
+  const body = JSON.stringify({
+    keywords,
+    location: document.getElementById('search-location').value.trim() || undefined,
+    remote_only: document.getElementById('search-remote').checked,
+    sources,
+    notify: true,
+  });
+
+  try {
+    const resp = await fetch(API + '/scrape/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          handleSseEvent(evt);
+        } catch {}
+      }
+    }
+  } catch (err) {
+    toast('Erro na busca: ' + err.message, 'error');
+    closeProgressModal();
+  }
+}
+
+function handleSseEvent(evt) {
+  if (evt.type === 'start') {
+    let statusText = evt.total + ' fontes a buscar...';
+    if (evt.expanded?.allTerms?.length) {
+      statusText += ' · ' + evt.expanded.allTerms.length + ' variações de keyword';
+      // Store for scoring
+      lastExpanded = evt.expanded;
+    }
+    document.getElementById('progress-status').textContent = statusText;
+  } else if (evt.type === 'progress') {
+    updateSourceRow(evt.source, evt.status, evt.count, evt.raw, evt.duration_ms);
+    if (evt.status === 'done' || evt.status === 'error') {
+      progDone++;
+      progTotal += (evt.raw || 0);
+      progNew += (evt.count || 0);
+      document.getElementById('prog-total').textContent = progTotal;
+      document.getElementById('prog-new').textContent = progNew;
+      document.getElementById('prog-done').textContent = progDone;
+      document.getElementById('progress-bar').style.width = Math.round((progDone / progTotalSources) * 100) + '%';
+      document.getElementById('progress-status').textContent = progDone + '/' + progTotalSources + ' fontes concluídas';
+    }
+  } else if (evt.type === 'done') {
+    if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+    const totalSec = Math.floor((Date.now() - _scrapeStartTime) / 1000);
+    const timeStr = totalSec > 60 ? Math.floor(totalSec/60) + 'min ' + (totalSec%60) + 's' : totalSec + 's';
+    document.getElementById('progress-status').textContent = '✅ Busca concluída em ' + timeStr + '!';
+    document.getElementById('eta-value').textContent = '✅';
+    document.getElementById('progress-bar').style.width = '100%';
+    document.getElementById('progress-footer').style.display = 'flex';
+    toast('✅ ' + evt.new + ' novas vagas encontradas em ' + timeStr + '!', 'success');
+    // Refresh jobs if already on that page
+    if (document.getElementById('page-jobs').style.display !== 'none') loadJobs();
+  } else if (evt.type === 'email') {
+    if (evt.sent) toast('📧 E-mail enviado!', 'success');
+  }
+}
+
+// ── Tags ──────────────────────────────────────────────────────────────────────
+function addTag(field, input) {
+  if (input.key !== 'Enter') return;
+  const val = input.value.trim();
+  if (!val) return;
+  if (!tagState[field]) tagState[field] = [];
+  if (!tagState[field].includes(val)) {
+    tagState[field].push(val);
+    renderTags(field, { skills:'skills-wrap', target_roles:'target-roles-wrap', target_locations:'target-locations-wrap', blacklist_companies:'blacklist-wrap' }[field]);
+  }
+  input.value = '';
+}
+function removeTag(field, val) {
+  tagState[field] = (tagState[field]||[]).filter(v => v !== val);
+  renderTags(field, { skills:'skills-wrap', target_roles:'target-roles-wrap', target_locations:'target-locations-wrap', blacklist_companies:'blacklist-wrap' }[field]);
+}
+function renderTags(field, wrapId) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  wrap.innerHTML = (tagState[field]||[]).map(v => '<span class="tag-pill">' + esc(v) + '<button onclick="removeTag(\'' + field + '\',\'' + esc(v) + '\')">&times;</button></span>').join('');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+
+// ── Schedules ─────────────────────────────────────────────────────────────────
+async function loadSchedules() {
+  try {
+    const [schedules, mailStatus] = await Promise.all([
+      api('/schedules'),
+      api('/mail-status').catch(() => ({ configured: false })),
+    ]);
+    document.getElementById('email-banner').style.display = mailStatus.configured ? 'none' : 'flex';
+    const list = document.getElementById('schedules-list');
+    if (!schedules.length) {
+      list.innerHTML = '<div class="empty"><div class="empty-icon">⏰</div>Nenhum agendamento configurado.<br>Crie um para buscar vagas automaticamente todo dia.</div>';
+      return;
+    }
+    list.innerHTML = schedules.map(s => {
+      const keywords = JSON.parse(s.keywords || '[]').join(', ');
+      const sources = JSON.parse(s.sources || '[]').length;
+      const lastRun = s.last_run ? new Date(s.last_run).toLocaleString('pt-BR') : 'Nunca executado';
+      return `
+        <div class="schedule-card">
+          <div class="schedule-header">
+            <div>
+              <div class="schedule-name">${esc(s.name)}</div>
+              <div class="schedule-meta">${esc(s.schedule)} · ${sources} fontes · último: ${lastRun}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <label class="toggle-switch">
+                <input type="checkbox" ${s.active ? 'checked' : ''} onchange="toggleSchedule('${s.id}', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+              <button class="icon-btn" onclick="runScheduleNow('${s.id}')" title="Executar agora">▶</button>
+              <button class="icon-btn danger" onclick="deleteSchedule('${s.id}')" title="Excluir">✕</button>
+            </div>
+          </div>
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+            ${keywords.split(',').map(k => `<span class="cv-chip keyword">${esc(k.trim())}</span>`).join('')}
+            ${s.notify_email ? '<span class="cv-chip role">📧 notificação ativa</span>' : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch {}
+}
+
+function openNewSchedule() {
+  if (cvAnalysis?.keywords?.length) document.getElementById('sch-keywords').value = cvAnalysis.keywords.slice(0,5).join(', ');
+  else if (tagState.target_roles.length) document.getElementById('sch-keywords').value = tagState.target_roles.slice(0,3).join(', ');
+  document.getElementById('schedule-modal').style.display = 'flex';
+}
+
+function setCron(expr) { document.getElementById('sch-cron').value = expr; }
+
+async function saveSchedule() {
+  const name = document.getElementById('sch-name').value.trim();
+  const keywords = document.getElementById('sch-keywords').value.split(',').map(k => k.trim()).filter(Boolean);
+  const schedule = document.getElementById('sch-cron').value.trim();
+  if (!name || !keywords.length || !schedule) return toast('Preencha nome, keywords e horário', 'error');
+  await api('/schedules', { method: 'POST', body: JSON.stringify({
+    name, keywords, location: document.getElementById('sch-location').value.trim() || undefined,
+    schedule, notify_email: document.getElementById('sch-notify').checked,
+    sources: ['gupy','inhire','geekhunter','remoteok'],
+  })});
+  document.getElementById('schedule-modal').style.display = 'none';
+  loadSchedules();
+  toast('✅ Agendamento criado!', 'success');
+}
+
+async function toggleSchedule(id, active) {
+  await api('/schedules/' + id, { method: 'PATCH', body: JSON.stringify({ active }) });
+  toast(active ? 'Agendamento ativado' : 'Agendamento pausado', 'info');
+}
+
+async function runScheduleNow(id) {
+  await api('/schedules/' + id + '/run', { method: 'POST', body: '{}' });
+  toast('▶ Busca iniciada em background!', 'info');
+}
+
+async function deleteSchedule(id) {
+  if (!confirm('Excluir este agendamento?')) return;
+  await api('/schedules/' + id, { method: 'DELETE', body: '{}' });
+  loadSchedules();
+  toast('Agendamento removido', 'info');
+}
+// ── Keyword Expansion ─────────────────────────────────────────────────────────
+let lastExpanded = null;
+
+async function previewExpansion() {
+  const keywords = document.getElementById('search-keywords').value.split(',').map(k => k.trim()).filter(Boolean);
+  if (!keywords.length) return toast('Informe as keywords primeiro', 'error');
+
+  const btn = document.getElementById('expand-btn');
+  btn.textContent = '⏳ Expandindo...';
+  btn.disabled = true;
+
+  try {
+    const result = await api('/expand-keywords', {
+      method: 'POST',
+      body: JSON.stringify({ keywords }),
+    });
+
+    lastExpanded = result.expanded;
+
+    const preview = document.getElementById('expansion-preview');
+    const summary = document.getElementById('expansion-summary');
+    const chips = document.getElementById('expansion-chips');
+
+    summary.textContent = result.expanded.summary || `${result.queries.length} variações de busca geradas`;
+    chips.innerHTML = result.expanded.allTerms
+      .slice(0, 20)
+      .map(t => `<span class="cv-chip ${t === keywords[0] ? 'role' : 'keyword'}">${esc(t)}</span>`)
+      .join('');
+
+    preview.style.display = 'block';
+    toast('✨ ' + result.expanded.allTerms.length + ' variações geradas!', 'success');
+  } catch (err) {
+    toast('Erro na expansão: ' + err.message, 'error');
+  } finally {
+    btn.textContent = '✨ Expandir Keywords';
+    btn.disabled = false;
+  }
+}
+
+let currentSourceFilter = '';
+
+async function clearAllJobs() {
+  if (!confirm('⚠️ Remover TODAS as vagas do banco?\n\nIsso não apaga candidaturas, apenas as vagas encontradas.\nFaça uma nova busca para repopular.')) return;
+  try {
+    const result = await api('/jobs/all', { method: 'DELETE', body: '{}' });
+    toast('🗑 ' + result.deleted + ' vagas removidas.', 'success');
+    allJobs = []; filteredJobs = [];
+    renderJobsTable('jobs-tbody', [], false);
+    loadDashboard();
+  } catch {}
+}
+
+async function clearSourceJobs() {
+  if (!currentSourceFilter) return;
+  if (!confirm('Remover todas as vagas do ' + currentSourceFilter + ' do banco?\n\nFaça uma nova busca para repopular com URLs corretas.')) return;
+  try {
+    const result = await api('/jobs/source/' + currentSourceFilter, { method: 'DELETE', body: '{}' });
+    toast('🗑 ' + result.deleted + ' vagas do ' + currentSourceFilter + ' removidas.', 'success');
+    document.getElementById('clear-source-btn').style.display = 'none';
+    currentSourceFilter = '';
+    loadJobs();
+    loadDashboard();
+  } catch {}
+}
+
+// ── Source selection helpers ──────────────────────────────────────────────────
+const DEFAULT_SOURCES = ['gupy', 'inhire', 'geekhunter', 'remoteok'];
+
+function selectAllSources(checked) {
+  document.querySelectorAll('#sources-checkboxes input[type="checkbox"]').forEach(cb => {
+    cb.checked = checked;
+  });
+}
+
+function selectDefaultSources() {
+  selectAllSources(false);
+  DEFAULT_SOURCES.forEach(src => {
+    const cb = document.querySelector(`#sources-checkboxes input[value="${src}"]`);
+    if (cb) cb.checked = true;
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  useGabrielProfile(); // loads CV data silently on startup
+  loadDashboard();
+});
+</script>
+</body>
+</html>

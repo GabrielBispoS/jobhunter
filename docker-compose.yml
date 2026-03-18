@@ -1,0 +1,52 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobhunter-backend
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      DB_PATH: /data/jobhunter.db
+      FRONTEND_URL: http://localhost
+      HEADLESS: "true"
+      NODE_ENV: production
+      # Ollama on host machine — works on Linux and Mac Docker Desktop
+      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_MODEL: llama3.2
+      PLAYWRIGHT_CONCURRENCY: 3
+    volumes:
+      - jobhunter-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # needed on Linux
+    networks:
+      - jobhunter-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jobhunter-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - jobhunter-net
+
+volumes:
+  jobhunter-data:
+    name: jobhunter-data
+
+networks:
+  jobhunter-net:
+    name: jobhunter-net
