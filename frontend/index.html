@@ -511,7 +511,7 @@
               <button class="btn btn-secondary" onclick="useGabrielProfile()" title="Carregar perfil do Gabriel">📋 Meu CV</button>
             </div>
             <div style="margin-top:10px;font-size:11px;color:var(--muted);line-height:1.5">
-              Requer <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">ANTHROPIC_API_KEY</code> configurado em <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">backend/.env</code>
+              Requer <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">GEMINI_API_KEY</code> configurado em <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">backend/.env</code>
             </div>
           </div>
           <div class="profile-card">
@@ -2065,7 +2065,7 @@ async function generateInterview() {
     result.style.flexDirection = 'column';
     result.style.gap = '10px';
   } catch (err) {
-    toast('Erro: ' + err.message + ' — Configure ANTHROPIC_API_KEY no .env', 'error');
+    toast('Erro: ' + err.message + ' — Configure GEMINI_API_KEY no .env', 'error');
     document.getElementById('interview-placeholder').style.display = 'block';
   } finally {
     document.getElementById('interview-loading').style.display = 'none';
@@ -2141,7 +2141,7 @@ async function generateLetter() {
     document.getElementById('letter-output').style.display = 'block';
     document.getElementById('copy-letter-btn').style.display = 'flex';
   } catch (err) {
-    toast('Erro: ' + err.message + ' — Configure ANTHROPIC_API_KEY no .env', 'error');
+    toast('Erro: ' + err.message + ' — Configure GEMINI_API_KEY no .env', 'error');
     document.getElementById('letter-placeholder').style.display = 'block';
   } finally {
     document.getElementById('letter-loading').style.display = 'none';
@@ -2175,7 +2175,7 @@ async function generateTailor() {
     document.getElementById('tailor-advice').textContent = r.advice || '—';
     document.getElementById('tailor-result').style.display = 'block';
   } catch (err) {
-    toast('Erro: ' + err.message + ' — Configure ANTHROPIC_API_KEY no .env', 'error');
+    toast('Erro: ' + err.message + ' — Configure GEMINI_API_KEY no .env', 'error');
     document.getElementById('tailor-placeholder').style.display = 'block';
   } finally {
     document.getElementById('tailor-loading').style.display = 'none';
