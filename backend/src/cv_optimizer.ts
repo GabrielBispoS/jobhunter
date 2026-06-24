@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Job, UserProfile } from './types';
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 function geminiKey(): string {
   const key = process.env['GEMINI_API_KEY'];
@@ -9,14 +9,24 @@ function geminiKey(): string {
   return key;
 }
 
+function extractGeminiText(data: any): string {
+  const parts: any[] = data.candidates?.[0]?.content?.parts || [];
+  // Filter out thinking parts (thought: true), keep only the actual response
+  const textParts = parts.filter((p: any) => !p.thought && typeof p.text === 'string');
+  return textParts.map((p: any) => p.text).join('').trim();
+}
+
 async function callGemini(systemPrompt: string, userText: string, maxTokens = 1000): Promise<string> {
   const key = geminiKey();
   const resp = await axios.post(`${GEMINI_API_BASE}?key=${key}`, {
     system_instruction: { parts: [{ text: systemPrompt }] },
     contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: { maxOutputTokens: maxTokens },
+    generationConfig: {
+      maxOutputTokens: maxTokens,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   }, { timeout: 30000 });
-  return resp.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return extractGeminiText(resp.data);
 }
 
 // ── Language detection ────────────────────────────────────────────────────────

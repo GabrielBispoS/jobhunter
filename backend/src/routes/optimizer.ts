@@ -4,7 +4,7 @@ import axios from 'axios';
 import { getJobById, getProfile } from '../db';
 import { analyzeAts, generateCoverLetter, tailorCv, generateInterviewQuestions, researchCompany } from '../cv_optimizer';
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 function requireGeminiKey(res: Response): string | null {
   const key = process.env['GEMINI_API_KEY'];
@@ -102,10 +102,11 @@ optimizerRouter.post('/cv/analyze', async (req: Request, res: Response) => {
           { text: 'Analise e retorne o JSON.' },
         ],
       }],
-      generationConfig: { maxOutputTokens: 1000 },
+      generationConfig: { maxOutputTokens: 1000, thinkingConfig: { thinkingBudget: 0 } },
     }, { timeout: 60000 });
 
-    const text: string = resp.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parts: any[] = resp.data.candidates?.[0]?.content?.parts || [];
+    const text: string = parts.filter((p: any) => !p.thought && typeof p.text === 'string').map((p: any) => p.text).join('').trim();
     const cleaned = text.replace(/```json|```/g, '').trim();
     try {
       res.json(JSON.parse(cleaned));
