@@ -16,8 +16,13 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 app.use(cors({ origin: process.env['FRONTEND_URL'] || '*' }));
 app.use(express.json({ limit: '10mb' }));
 
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', ts: new Date().toISOString() });
+app.get('/health', async (_req: Request, res: Response) => {
+  const checks: Record<string, string> = {};
+  try { await getDb(); checks['db'] = 'ok'; } catch { checks['db'] = 'error'; }
+  const { isMailConfigured } = await import('./mailer');
+  checks['mail'] = isMailConfigured() ? 'configured' : 'not_configured';
+  const allOk = Object.values(checks).every(v => v === 'ok' || v === 'configured' || v === 'not_configured');
+  res.status(allOk ? 200 : 503).json({ status: allOk ? 'ok' : 'degraded', ts: new Date().toISOString(), checks });
 });
 
 app.use('/api', router);

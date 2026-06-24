@@ -5,6 +5,9 @@ export interface Job {
   location?: string;
   remote?: 'remote' | 'hybrid' | 'onsite';
   salary?: string;
+  salary_min?: number;
+  salary_max?: number;
+  language?: 'pt' | 'en';
   description?: string;
   requirements?: string[];
   url: string;
@@ -25,6 +28,8 @@ export interface Application {
   cover_letter?: string;
   response_at?: string;
   response_type?: string;
+  follow_up_at?: string;
+  follow_up_sent?: boolean;
   created_at: string;
   updated_at: string;
 }

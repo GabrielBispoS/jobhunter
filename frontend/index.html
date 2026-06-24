@@ -231,6 +231,34 @@
       .stats-grid { grid-template-columns: repeat(3, 1fr); }
       .kanban { grid-template-columns: repeat(3, 1fr); }
     }
+
+    /* ── Analysis Modal ── */
+    .analysis-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 680px; max-height: 90vh; overflow-y: auto; }
+    .analysis-modal-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .analysis-modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+    .tab { padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .ats-score-ring { display: flex; align-items: center; gap: 24px; margin-bottom: 20px; }
+    .score-circle { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; border: 4px solid; flex-shrink: 0; }
+    .score-green { border-color: var(--green); color: var(--green); }
+    .score-amber { border-color: var(--accent3); color: var(--accent3); }
+    .score-red { border-color: var(--red); color: var(--red); }
+    .ats-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+    .chip-green { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); padding: 2px 8px; border-radius: 9999px; font-size: 11px; }
+    .chip-red { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); padding: 2px 8px; border-radius: 9999px; font-size: 11px; }
+    .chip-amber { background: color-mix(in srgb, var(--accent3) 12%, transparent); color: var(--accent3); border: 1px solid color-mix(in srgb, var(--accent3) 30%, transparent); padding: 2px 8px; border-radius: 9999px; font-size: 11px; }
+    .letter-output { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.8; color: var(--text); min-height: 200px; white-space: pre-wrap; }
+    .tailor-section { margin-bottom: 16px; }
+    .tailor-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+    .lang-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; vertical-align: middle; margin-left: 4px; }
+    .lang-pt { background: #1a2a1a; color: #4ade80; }
+    .lang-en { background: #0a1a2a; color: #60a5fa; }
+    .follow-up-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent3); display: inline-block; margin-right: 4px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .kanban-card-followup { font-size: 10px; color: var(--accent3); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
   </style>
 </head>
 <body>
@@ -335,6 +363,7 @@
             <option value="csod">Corporativos</option>
           </optgroup>
           <optgroup label="🌍 Global">
+            <option value="linkedin">LinkedIn</option>
             <option value="glassdoor">Glassdoor</option>
             <option value="indeed">Indeed BR</option>
             <option value="wellfound">Wellfound</option>
@@ -557,6 +586,92 @@
 
 </div><!-- .main -->
 
+<!-- Analysis Modal -->
+<div class="modal-backdrop" id="analysis-modal" style="display:none">
+  <div class="analysis-modal">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+      <div>
+        <div class="analysis-modal-title" id="analysis-job-title">—</div>
+        <div class="analysis-modal-sub" id="analysis-job-company">—</div>
+      </div>
+      <button class="btn btn-ghost" style="font-size:18px;padding:4px 10px" onclick="closeAnalysisModal()">✕</button>
+    </div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('ats')">🎯 ATS Score</div>
+      <div class="tab" onclick="switchTab('letter')">✉️ Carta de Apresentação</div>
+      <div class="tab" onclick="switchTab('tailor')">✂️ Adaptar CV</div>
+    </div>
+
+    <!-- ATS Tab -->
+    <div class="tab-content active" id="tab-ats">
+      <div id="ats-loading" class="loading" style="padding:24px"><div class="spinner"></div> Analisando compatibilidade...</div>
+      <div id="ats-result" style="display:none">
+        <div class="ats-score-ring">
+          <div class="score-circle" id="ats-circle">—</div>
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;margin-bottom:4px" id="ats-score-label">—</div>
+            <div style="font-size:12px;color:var(--muted)" id="ats-language-line">—</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px" id="ats-salary-line" style="display:none">—</div>
+          </div>
+        </div>
+        <div style="margin-bottom:14px">
+          <div class="tailor-label">Skills compatíveis</div>
+          <div class="ats-chips" id="ats-matched"></div>
+        </div>
+        <div style="margin-bottom:14px">
+          <div class="tailor-label">Skills não encontradas</div>
+          <div class="ats-chips" id="ats-missing"></div>
+        </div>
+        <div>
+          <div class="tailor-label">Sugestões</div>
+          <div id="ats-suggestions" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:13px;color:var(--muted)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cover Letter Tab -->
+    <div class="tab-content" id="tab-letter">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-ai" style="flex:1" onclick="generateLetter()" id="gen-letter-btn">✉️ Gerar Carta</button>
+        <button class="btn btn-ghost" onclick="copyLetter()" id="copy-letter-btn" style="display:none">📋 Copiar</button>
+      </div>
+      <div id="letter-loading" style="display:none" class="ai-thinking"><div class="spinner"></div><span>Gerando carta com IA...</span></div>
+      <div class="letter-output" id="letter-output" style="display:none"></div>
+      <div id="letter-placeholder" style="text-align:center;padding:32px;color:var(--muted);font-size:13px">
+        Clique em "Gerar Carta" para criar uma carta de apresentação personalizada para esta vaga.
+      </div>
+    </div>
+
+    <!-- Tailor CV Tab -->
+    <div class="tab-content" id="tab-tailor">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-ai" style="flex:1" onclick="generateTailor()" id="gen-tailor-btn">✂️ Adaptar CV</button>
+      </div>
+      <div id="tailor-loading" style="display:none" class="ai-thinking"><div class="spinner"></div><span>Adaptando com IA...</span></div>
+      <div id="tailor-result" style="display:none">
+        <div class="tailor-section">
+          <div class="tailor-label">Resumo Profissional Recomendado</div>
+          <div id="tailor-summary" style="background:var(--surface2);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--text);margin-top:6px"></div>
+        </div>
+        <div class="tailor-section">
+          <div class="tailor-label">Highlights para Adicionar</div>
+          <div id="tailor-highlights" style="margin-top:6px;display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+        <div class="tailor-section">
+          <div class="tailor-label">Keywords para Incluir</div>
+          <div class="ats-chips" id="tailor-keywords" style="margin-top:6px"></div>
+        </div>
+        <div class="tailor-section">
+          <div class="tailor-label">Dica Estratégica</div>
+          <div id="tailor-advice" style="background:color-mix(in srgb,var(--accent) 8%,transparent);border:1px solid color-mix(in srgb,var(--accent) 25%,transparent);border-radius:8px;padding:14px;font-size:13px;color:var(--text);margin-top:6px"></div>
+        </div>
+      </div>
+      <div id="tailor-placeholder" style="text-align:center;padding:32px;color:var(--muted);font-size:13px">
+        Clique em "Adaptar CV" para receber sugestões personalizadas de como adaptar seu currículo para esta vaga.
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Scrape Progress Modal -->
 <div class="modal-backdrop" id="progress-modal" style="display:none">
@@ -625,6 +740,7 @@
         <label class="checkbox-label"><input type="checkbox" value="csod"> 🏦 Corporativos (CSOD)</label>
 
         <div style="width:100%;font-size:11px;color:var(--accent3);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:10px;margin-bottom:4px">🌍 Global</div>
+        <label class="checkbox-label"><input type="checkbox" value="linkedin"> 💼 LinkedIn</label>
         <label class="checkbox-label"><input type="checkbox" value="glassdoor"> 🟠 Glassdoor</label>
         <label class="checkbox-label"><input type="checkbox" value="indeed"> 🔍 Indeed BR</label>
         <label class="checkbox-label"><input type="checkbox" value="wellfound"> 🦅 Wellfound</label>
@@ -820,18 +936,22 @@ function renderJobsTable(tbodyId, jobs, compact) {
     tbody.innerHTML = '<tr><td colspan="' + cols + '" class="empty"><div class="empty-icon">🔍</div>Nenhuma vaga encontrada.<br>Use "Buscar Vagas" para começar.</td></tr>';
     return;
   }
-  tbody.innerHTML = jobs.map(j => '<tr>' +
-    '<td><div class="job-title">' + esc(j.title) + '</div><div class="job-company">' + esc(j.company) + '</div></td>' +
-    '<td><span class="source-badge src-' + esc(j.source) + '">' + esc(j.source) + '</span></td>' +
-    '<td style="color:var(--muted);font-size:12px">' + esc(j.location || '—') + '</td>' +
-    (!compact ? '<td>' + (j.remote ? '<span class="remote-tag remote-' + esc(j.remote) + '">' + esc(j.remote) + '</span>' : '—') + '</td>' : '') +
-    '<td>' + matchBadge(j._match) + '</td>' +
-    '<td><div class="actions">' +
-      '<button class="icon-btn" title="Abrir" onclick="window.open(\'' + esc(j.url) + '\',\'_blank\')">↗</button>' +
-      '<button class="icon-btn apply" title="Candidatar" onclick="applyToJob(\'' + esc(j.id) + '\',\'' + esc(j.title) + '\',\'' + esc(j.source) + '\')">' + (j.source === 'gupy' ? '⚡' : '✓') + '</button>' +
-      '<button class="icon-btn" title="Salvar" onclick="saveJob(\'' + esc(j.id) + '\')">🔖</button>' +
-    '</div></td>' +
-  '</tr>').join('');
+  tbody.innerHTML = jobs.map(j => {
+    const langBadge = j.language ? '<span class="lang-badge lang-' + j.language + '">' + (j.language === 'en' ? '🌍 EN' : '🇧🇷 PT') + '</span>' : '';
+    return '<tr>' +
+      '<td><div class="job-title">' + esc(j.title) + langBadge + '</div><div class="job-company">' + esc(j.company) + '</div></td>' +
+      '<td><span class="source-badge src-' + esc(j.source) + '">' + esc(j.source) + '</span></td>' +
+      '<td style="color:var(--muted);font-size:12px">' + esc(j.location || '—') + '</td>' +
+      (!compact ? '<td>' + (j.remote ? '<span class="remote-tag remote-' + esc(j.remote) + '">' + esc(j.remote) + '</span>' : '—') + '</td>' : '') +
+      '<td>' + matchBadge(j._match) + '</td>' +
+      '<td><div class="actions">' +
+        '<button class="icon-btn" title="Abrir" onclick="window.open(\'' + esc(j.url) + '\',\'_blank\')">↗</button>' +
+        '<button class="icon-btn apply" title="Candidatar" onclick="applyToJob(\'' + esc(j.id) + '\',\'' + esc(j.title) + '\',\'' + esc(j.source) + '\')">' + (j.source === 'gupy' ? '⚡' : '✓') + '</button>' +
+        '<button class="icon-btn" title="Salvar" onclick="saveJob(\'' + esc(j.id) + '\')">🔖</button>' +
+        (!compact ? '<button class="icon-btn" title="Analisar com IA" onclick="openAnalysisModal(\'' + esc(j.id) + '\',\'' + esc(j.title) + '\',\'' + esc(j.company) + '\')">🔬</button>' : '') +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
 }
 
 async function applyToJob(jobId, title, source) {
@@ -887,7 +1007,11 @@ async function loadApplications() {
         '<div class="kanban-header"><span style="color:' + col.color + '">' + col.label + '</span><span style="color:var(--muted);font-size:12px;font-family:\'DM Mono\',monospace">' + col.items.length + '</span></div>' +
         '<div class="kanban-body">' +
           (col.items.length === 0 ? '<div style="color:var(--muted);font-size:12px;padding:8px">Nenhuma</div>' :
-           col.items.map(a => '<div class="kanban-card"><div class="kanban-card-title">' + esc(a.title || '—') + '</div><div class="kanban-card-company">' + esc(a.company || '—') + '</div><div class="kanban-card-date">' + (a.applied_at ? new Date(a.applied_at).toLocaleDateString('pt-BR') : '—') + '</div></div>').join('')) +
+           col.items.map(a => {
+             const needsFollowUp = a.follow_up_at && !a.follow_up_sent && new Date(a.follow_up_at) <= new Date() && (a.status === 'applied' || a.status === 'pending');
+             const followUpStr = needsFollowUp ? '<div class="kanban-card-followup"><span class="follow-up-dot"></span>Follow-up pendente</div>' : '';
+             return '<div class="kanban-card"><div class="kanban-card-title">' + esc(a.title || '—') + '</div><div class="kanban-card-company">' + esc(a.company || '—') + '</div><div class="kanban-card-date">' + (a.applied_at ? new Date(a.applied_at).toLocaleDateString('pt-BR') : '—') + '</div>' + followUpStr + '</div>';
+           }).join('')) +
         '</div>' +
       '</div>'
     ).join('');
@@ -1443,6 +1567,116 @@ function selectDefaultSources() {
     const cb = document.querySelector(`#sources-checkboxes input[value="${src}"]`);
     if (cb) cb.checked = true;
   });
+}
+
+// ── Analysis Modal ────────────────────────────────────────────────────────────
+let _analysisJobId = null;
+let _analysisApiKey = null;
+
+async function openAnalysisModal(jobId, title, company) {
+  _analysisJobId = jobId;
+  document.getElementById('analysis-job-title').textContent = title;
+  document.getElementById('analysis-job-company').textContent = company;
+  document.getElementById('analysis-modal').style.display = 'flex';
+  switchTab('ats');
+  await loadAts();
+}
+
+function closeAnalysisModal() {
+  document.getElementById('analysis-modal').style.display = 'none';
+  _analysisJobId = null;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    const tabs = ['ats','letter','tailor'];
+    el.classList.toggle('active', tabs[i] === tab);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+async function loadAts() {
+  if (!_analysisJobId) return;
+  document.getElementById('ats-loading').style.display = 'flex';
+  document.getElementById('ats-result').style.display = 'none';
+  try {
+    const r = await api('/jobs/' + _analysisJobId + '/ats');
+    document.getElementById('ats-loading').style.display = 'none';
+    document.getElementById('ats-result').style.display = 'block';
+    const circle = document.getElementById('ats-circle');
+    circle.textContent = r.score + '%';
+    circle.className = 'score-circle ' + (r.score >= 70 ? 'score-green' : r.score >= 40 ? 'score-amber' : 'score-red');
+    document.getElementById('ats-score-label').textContent = r.score >= 70 ? '✅ Bom match!' : r.score >= 40 ? '⚠️ Match médio' : '❌ Match baixo';
+    document.getElementById('ats-language-line').textContent = 'Idioma detectado: ' + (r.language === 'en' ? '🌍 Inglês' : '🇧🇷 Português');
+    const salaryLine = document.getElementById('ats-salary-line');
+    if (r.salary_min || r.salary_max) {
+      salaryLine.textContent = 'Faixa salarial: ' + (r.salary_min ? 'R$ ' + r.salary_min.toLocaleString('pt-BR') : '') + (r.salary_max ? ' – R$ ' + r.salary_max.toLocaleString('pt-BR') : '');
+      salaryLine.style.display = 'block';
+    } else { salaryLine.style.display = 'none'; }
+    document.getElementById('ats-matched').innerHTML = (r.matched || []).map(s => '<span class="chip-green">' + esc(s) + '</span>').join('') || '<span style="color:var(--muted);font-size:12px">Nenhuma</span>';
+    document.getElementById('ats-missing').innerHTML = (r.missing || []).slice(0, 10).map(s => '<span class="chip-red">' + esc(s) + '</span>').join('') || '<span style="color:var(--muted);font-size:12px">Nenhuma</span>';
+    document.getElementById('ats-suggestions').innerHTML = (r.suggestions || []).map(s => '<div style="display:flex;gap:8px"><span style="color:var(--accent)">→</span><span>' + esc(s) + '</span></div>').join('');
+  } catch (err) {
+    document.getElementById('ats-loading').innerHTML = '<span style="color:var(--red)">Erro: configure seu perfil para ver o ATS score.</span>';
+  }
+}
+
+async function generateLetter() {
+  if (!_analysisJobId) return;
+  document.getElementById('letter-loading').style.display = 'flex';
+  document.getElementById('letter-output').style.display = 'none';
+  document.getElementById('letter-placeholder').style.display = 'none';
+  document.getElementById('gen-letter-btn').disabled = true;
+  try {
+    const r = await api('/jobs/' + _analysisJobId + '/cover-letter', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey: _analysisApiKey }),
+    });
+    document.getElementById('letter-output').textContent = r.cover_letter;
+    document.getElementById('letter-output').style.display = 'block';
+    document.getElementById('copy-letter-btn').style.display = 'flex';
+  } catch (err) {
+    toast('Erro: ' + err.message + ' — Configure ANTHROPIC_API_KEY no .env', 'error');
+    document.getElementById('letter-placeholder').style.display = 'block';
+  } finally {
+    document.getElementById('letter-loading').style.display = 'none';
+    document.getElementById('gen-letter-btn').disabled = false;
+  }
+}
+
+function copyLetter() {
+  const text = document.getElementById('letter-output').textContent;
+  navigator.clipboard.writeText(text).then(() => toast('📋 Carta copiada!', 'success'));
+}
+
+async function generateTailor() {
+  if (!_analysisJobId) return;
+  document.getElementById('tailor-loading').style.display = 'flex';
+  document.getElementById('tailor-result').style.display = 'none';
+  document.getElementById('tailor-placeholder').style.display = 'none';
+  document.getElementById('gen-tailor-btn').disabled = true;
+  try {
+    const r = await api('/jobs/' + _analysisJobId + '/tailor-cv', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey: _analysisApiKey }),
+    });
+    document.getElementById('tailor-summary').textContent = r.summary || '—';
+    document.getElementById('tailor-highlights').innerHTML = (r.highlights || []).map(h =>
+      '<div style="display:flex;gap:8px;padding:8px;background:var(--surface2);border-radius:6px;font-size:13px"><span style="color:var(--green)">•</span><span>' + esc(h) + '</span></div>'
+    ).join('');
+    document.getElementById('tailor-keywords').innerHTML = (r.keywords_to_add || []).map(k =>
+      '<span class="chip-amber">' + esc(k) + '</span>'
+    ).join('');
+    document.getElementById('tailor-advice').textContent = r.advice || '—';
+    document.getElementById('tailor-result').style.display = 'block';
+  } catch (err) {
+    toast('Erro: ' + err.message + ' — Configure ANTHROPIC_API_KEY no .env', 'error');
+    document.getElementById('tailor-placeholder').style.display = 'block';
+  } finally {
+    document.getElementById('tailor-loading').style.display = 'none';
+    document.getElementById('gen-tailor-btn').disabled = false;
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

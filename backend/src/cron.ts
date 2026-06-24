@@ -6,7 +6,8 @@
 
 import cron from 'node-cron';
 import { getDb, all, get, run as dbRun } from './db';
-import { sendJobAlert, isMailConfigured } from './mailer';
+import { sendJobAlert, sendFollowUpReminder, isMailConfigured } from './mailer';
+import { getPendingFollowUps, markFollowUpSent } from './db';
 import { fingerprint, deduplicateJobs } from './dedup';
 import { Job, SearchConfig } from './types';
 
@@ -126,6 +127,19 @@ async function executeSchedule(cfg: ScheduleConfig): Promise<void> {
   }
 }
 
+async function checkFollowUps(): Promise<void> {
+  if (!isMailConfigured()) return;
+  try {
+    const pending = await getPendingFollowUps();
+    if (pending.length === 0) return;
+    await sendFollowUpReminder(pending);
+    for (const app of pending) await markFollowUpSent(app['id'] as string);
+    console.log(`📧 Follow-up reminder sent for ${pending.length} applications`);
+  } catch (err: any) {
+    console.error('❌ Follow-up check error:', err.message);
+  }
+}
+
 const activeTasks = new Map<string, cron.ScheduledTask>();
 
 export async function startCronJobs(): Promise<void> {
@@ -143,6 +157,10 @@ export async function startCronJobs(): Promise<void> {
     activeTasks.set(cfg.id, task);
     console.log(`⏰ Scheduled [${cfg.name}] — ${cfg.schedule}`);
   }
+
+  // Daily follow-up check at 08:05
+  cron.schedule('5 8 * * *', () => checkFollowUps(), { timezone: 'America/Sao_Paulo' });
+  console.log('⏰ Follow-up check scheduled — 08:05 daily');
 
   // Default schedule: if no DB config, use env variable
   const defaultCron = process.env['DEFAULT_CRON'];

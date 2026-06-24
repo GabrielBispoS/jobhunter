@@ -148,6 +148,60 @@ export async function sendJobAlert(
   console.log(`📧 Email enviado para ${to} (${newJobs.length} vagas)`);
 }
 
+export async function sendFollowUpReminder(apps: Record<string, any>[]): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter || !apps.length) return;
+
+  const to = process.env['NOTIFY_EMAIL']!;
+  const rows = apps.map(a => `
+    <tr>
+      <td style="padding:10px;border-bottom:1px solid #222">
+        <strong style="color:#e8e8f0">${escHtml(a['title'] || '—')}</strong><br>
+        <span style="color:#888;font-size:13px">${escHtml(a['company'] || '—')}</span>
+      </td>
+      <td style="padding:10px;border-bottom:1px solid #222;color:#888;font-size:13px">
+        ${a['applied_at'] ? new Date(a['applied_at']).toLocaleDateString('pt-BR') : '—'}
+      </td>
+      <td style="padding:10px;border-bottom:1px solid #222">
+        <a href="${escHtml(a['url'] || '#')}" style="color:#6366f1;font-size:12px">Ver vaga ↗</a>
+      </td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#0a0a0f;color:#e8e8f0;font-family:'Segoe UI',Arial,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:32px 16px">
+    <h1 style="color:#6366f1;font-size:22px;margin-bottom:8px">⚡ JobHunter — Follow-up Lembrete</h1>
+    <p style="color:#888;margin-bottom:24px">
+      ${apps.length} candidatura${apps.length > 1 ? 's' : ''} sem resposta — já passaram 14 dias. Hora de fazer follow-up!
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="background:#111118;border:1px solid #222232;border-radius:12px;border-collapse:collapse">
+      <thead>
+        <tr style="background:#1a1a24">
+          <th style="padding:12px;text-align:left;font-size:11px;text-transform:uppercase;color:#666">Vaga</th>
+          <th style="padding:12px;text-align:left;font-size:11px;text-transform:uppercase;color:#666">Aplicado em</th>
+          <th style="padding:12px;text-align:left;font-size:11px;text-transform:uppercase;color:#666">Link</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="margin-top:20px;font-size:12px;color:#555">
+      💡 Dica: envie uma mensagem no LinkedIn para o recrutador ou um e-mail de acompanhamento educado.
+    </p>
+  </div>
+</body></html>`;
+
+  await transporter.sendMail({
+    from: `"JobHunter 🚀" <${process.env['SMTP_USER']}>`,
+    to,
+    subject: `⏰ Follow-up pendente — ${apps.length} vaga${apps.length > 1 ? 's' : ''} sem resposta`,
+    html,
+  });
+  console.log(`📧 Follow-up reminder enviado para ${to} (${apps.length} candidaturas)`);
+}
+
 function scoreColor(score: number): string {
   if (score >= 3) return '#10b981';
   if (score >= 1) return '#f59e0b';

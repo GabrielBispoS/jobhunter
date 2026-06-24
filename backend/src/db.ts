@@ -59,12 +59,14 @@ function initSchema(database: SqlJsDatabase): void {
       location TEXT, remote TEXT, salary TEXT, description TEXT,
       requirements TEXT, url TEXT NOT NULL, apply_url TEXT,
       source TEXT NOT NULL, posted_at TEXT, fetched_at TEXT NOT NULL,
-      tags TEXT, status TEXT DEFAULT 'new'
+      tags TEXT, status TEXT DEFAULT 'new',
+      language TEXT, salary_min INTEGER, salary_max INTEGER
     );
     CREATE TABLE IF NOT EXISTS applications (
       id TEXT PRIMARY KEY, job_id TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending', applied_at TEXT,
       notes TEXT, cover_letter TEXT, response_at TEXT, response_type TEXT,
+      follow_up_at TEXT, follow_up_sent INTEGER DEFAULT 0,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS profile (
@@ -81,6 +83,20 @@ function initSchema(database: SqlJsDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_jobs_fetched_at ON jobs(fetched_at);
     CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
   `);
+  runMigrations(database);
+}
+
+function runMigrations(database: SqlJsDatabase): void {
+  const migrations = [
+    'ALTER TABLE jobs ADD COLUMN language TEXT',
+    'ALTER TABLE jobs ADD COLUMN salary_min INTEGER',
+    'ALTER TABLE jobs ADD COLUMN salary_max INTEGER',
+    'ALTER TABLE applications ADD COLUMN follow_up_at TEXT',
+    'ALTER TABLE applications ADD COLUMN follow_up_sent INTEGER DEFAULT 0',
+  ];
+  for (const sql of migrations) {
+    try { database.run(sql); } catch { /* column already exists */ }
+  }
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
@@ -90,15 +106,21 @@ export async function upsertJobs(jobs: Job[]): Promise<void> {
   for (const job of jobs) {
     run(database, `
       INSERT OR REPLACE INTO jobs
-        (id, title, company, location, remote, salary, description, requirements,
-         url, apply_url, source, posted_at, fetched_at, tags, status)
+        (id, title, company, location, remote, salary, salary_min, salary_max,
+         language, description, requirements, url, apply_url, source,
+         posted_at, fetched_at, tags, status)
       VALUES
-        ($id,$title,$company,$location,$remote,$salary,$description,$requirements,
-         $url,$apply_url,$source,$posted_at,$fetched_at,$tags,$status)
+        ($id,$title,$company,$location,$remote,$salary,$salary_min,$salary_max,
+         $language,$description,$requirements,$url,$apply_url,$source,
+         $posted_at,$fetched_at,$tags,$status)
     `, {
       $id: job.id, $title: job.title, $company: job.company,
       $location: job.location ?? null, $remote: job.remote ?? null,
-      $salary: job.salary ?? null, $description: job.description ?? null,
+      $salary: job.salary ?? null,
+      $salary_min: job.salary_min ?? null,
+      $salary_max: job.salary_max ?? null,
+      $language: job.language ?? null,
+      $description: job.description ?? null,
       $requirements: JSON.stringify(job.requirements || []),
       $url: job.url, $apply_url: job.apply_url ?? null,
       $source: job.source, $posted_at: job.posted_at ?? null,
@@ -152,7 +174,7 @@ export async function createApplication(app: Omit<Application, 'created_at' | 'u
   });
 }
 
-const ALLOWED_APP_FIELDS = new Set(['status', 'applied_at', 'notes', 'cover_letter', 'response_at', 'response_type']);
+const ALLOWED_APP_FIELDS = new Set(['status', 'applied_at', 'notes', 'cover_letter', 'response_at', 'response_type', 'follow_up_at', 'follow_up_sent']);
 
 export async function updateApplication(id: string, data: Partial<Application>): Promise<void> {
   const database = await getDb();
@@ -213,6 +235,23 @@ const ALLOWED_PROFILE_FIELDS = new Set([
 ]);
 
 const ARRAY_PROFILE_FIELDS = new Set(['skills','target_roles','target_locations','blacklist_companies','keywords']);
+
+export async function getPendingFollowUps(): Promise<Record<string, any>[]> {
+  const database = await getDb();
+  return all(database, `
+    SELECT a.*, j.title, j.company, j.url
+    FROM applications a JOIN jobs j ON a.job_id = j.id
+    WHERE a.follow_up_at <= $now
+      AND (a.follow_up_sent IS NULL OR a.follow_up_sent = 0)
+      AND a.status IN ('applied', 'pending')
+    ORDER BY a.follow_up_at ASC
+  `, { $now: new Date().toISOString() });
+}
+
+export async function markFollowUpSent(id: string): Promise<void> {
+  const database = await getDb();
+  run(database, `UPDATE applications SET follow_up_sent = 1, updated_at = datetime('now') WHERE id = $id`, { $id: id });
+}
 
 export async function updateProfile(data: Partial<UserProfile>): Promise<void> {
   const database = await getDb();

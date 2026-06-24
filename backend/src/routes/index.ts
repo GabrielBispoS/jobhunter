@@ -22,6 +22,7 @@ import {
   upsertJobs, getJobs, getJobById, updateJobStatus,
   createApplication, updateApplication, getApplications,
   getProfile, updateProfile, getStats, getDb, all, run as dbRun,
+  getPendingFollowUps, markFollowUpSent,
 } from '../db';
 import { SearchConfig, Job } from '../types';
 import { expandKeywords, buildSearchQueries, scoreJob, checkOllama } from '../keyword_expander';
@@ -29,8 +30,10 @@ import { browserSemaphore, PLAYWRIGHT_CONCURRENCY } from '../queue';
 import { deduplicateJobs, fingerprint } from '../dedup';
 import { sendJobAlert, isMailConfigured } from '../mailer';
 import { reloadCronJobs, ensureScheduleTable } from '../cron';
+import { optimizerRouter } from './optimizer';
 
 export const router = Router();
+router.use('/', optimizerRouter);
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 
@@ -382,7 +385,7 @@ router.post('/scrape', async (req: Request, res: Response) => {
 
   const runSource = async (key: string, fn: ScraperFn, wrap: boolean) => {
     try {
-      const doRun = () => fn(config);
+      const doRun = () => fn(config as import('../types').SearchConfig);
       const r = wrap ? await browserSemaphore.run(doRun) : await doRun();
       const deduped = deduplicateJobs(r.jobs, existingFps);
       deduped.forEach(j => existingFps.add(fingerprint(j)));
@@ -417,7 +420,8 @@ router.get('/applications', async (req: Request, res: Response) => {
 router.post('/applications', async (req: Request, res: Response) => {
   const body = validate(ApplicationCreateSchema, req.body, res);
   if (!body) return;
-  await createApplication({ id: uuid(), job_id: body.job_id, status: 'pending', notes: body.notes, cover_letter: body.cover_letter });
+  const followUp = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  await createApplication({ id: uuid(), job_id: body.job_id, status: 'pending', notes: body.notes, cover_letter: body.cover_letter, follow_up_at: followUp });
   res.json({ ok: true });
 });
 
@@ -456,10 +460,12 @@ router.post('/apply/:jobId', async (req: Request, res: Response) => {
         });
 
         if (result.success && result.method === 'easy_apply') {
+          const followUp = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
           await createApplication({
             id: uuid(), job_id: job.id, status: 'applied',
             applied_at: new Date().toISOString(),
             notes: `Gupy Easy Apply${result.application_id ? ' · ID: ' + result.application_id : ''}`,
+            follow_up_at: followUp,
           });
         }
 
@@ -487,10 +493,12 @@ router.post('/apply/:jobId', async (req: Request, res: Response) => {
     });
 
     if (result.success) {
+      const followUp = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
       await createApplication({
         id: uuid(), job_id: job.id, status: 'applied',
         applied_at: new Date().toISOString(),
         notes: 'Auto-applied via Playwright',
+        follow_up_at: followUp,
       });
     }
 
