@@ -27,6 +27,13 @@ app.get('/health', async (_req: Request, res: Response) => {
 
 app.use('/api', router);
 
+// Serve frontend static files (dev mode without Docker)
+const frontendDir = path.join(__dirname, '../../frontend');
+if (fs.existsSync(frontendDir)) {
+  app.use(express.static(frontendDir));
+  app.get('/', (_req, res) => res.sendFile(path.join(frontendDir, 'index.html')));
+}
+
 getDb().then(async () => {
   console.log('✅ Database initialized');
   await startCronJobs();
