@@ -1,12 +1,23 @@
 import axios from 'axios';
 import { Job, UserProfile } from './types';
 
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_HEADERS = (key: string) => ({
-  'x-api-key': key,
-  'anthropic-version': '2023-06-01',
-  'content-type': 'application/json',
-});
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+function geminiKey(): string {
+  const key = process.env['GEMINI_API_KEY'];
+  if (!key) throw new Error('GEMINI_API_KEY não configurada. Adicione ao backend/.env.');
+  return key;
+}
+
+async function callGemini(systemPrompt: string, userText: string, maxTokens = 1000): Promise<string> {
+  const key = geminiKey();
+  const resp = await axios.post(`${GEMINI_API_BASE}?key=${key}`, {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    generationConfig: { maxOutputTokens: maxTokens },
+  }, { timeout: 30000 });
+  return resp.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
 
 // ── Language detection ────────────────────────────────────────────────────────
 
@@ -28,7 +39,6 @@ export function detectLanguage(text: string): 'pt' | 'en' {
 
 export function parseSalary(text: string | undefined): { min?: number; max?: number } {
   if (!text) return {};
-  // Remove thousands separators and normalize
   const cleaned = text.replace(/\./g, '').replace(',', '.');
   const rangeMatch = cleaned.match(/(\d{3,6})(?:[^\d]+(\d{3,6}))?/);
   if (!rangeMatch) return {};
@@ -76,7 +86,6 @@ export function analyzeAts(job: Record<string, any>, profile: UserProfile): AtsR
   const keywordScore = requiredKeywords.length > 0 ? keywordHits / requiredKeywords.length : 0.5;
 
   const score = Math.min(100, Math.round((skillCoverage * 60) + (roleScore * 20) + (keywordScore * 20)));
-
   const suggestions = buildSuggestions(score, matched, missing, language, job, profile);
 
   return { score, matched, missing, suggestions, language, ...salary };
@@ -131,20 +140,20 @@ function buildSuggestions(
 
 const STOP_WORDS = new Set(['the','and','for','with','que','com','para','uma','ter','ser','nos','que','uma']);
 
-// ── Cover Letter (Claude API) ─────────────────────────────────────────────────
+// ── Cover Letter (Gemini) ─────────────────────────────────────────────────────
 
 export async function generateCoverLetter(
   job: Record<string, any>,
   profile: UserProfile,
-  apiKey?: string
 ): Promise<string> {
-  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (!key) throw new Error('ANTHROPIC_API_KEY não configurada. Adicione ao .env para usar esta função.');
-
   const language = detectLanguage([job['title'], job['description']].filter(Boolean).join(' '));
   const isPt = language === 'pt';
 
-  const prompt = isPt
+  const system = isPt
+    ? 'Você é um especialista em carreira que escreve cartas de apresentação profissionais e eficazes.'
+    : 'You are a career expert who writes professional and effective cover letters.';
+
+  const user = isPt
     ? `Escreva uma carta de apresentação profissional e concisa (máximo 250 palavras) para a seguinte vaga.
 A carta deve ser em primeira pessoa, destacar as skills mais relevantes do candidato para a vaga, e terminar com uma chamada para ação.
 
@@ -176,39 +185,29 @@ LinkedIn: ${profile.linkedin || ''}
 
 Return ONLY the cover letter, no title or explanations.`;
 
-  const resp = await axios.post(CLAUDE_API, {
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 600,
-    messages: [{ role: 'user', content: prompt }],
-  }, { headers: CLAUDE_HEADERS(key), timeout: 30000 });
-
-  return (resp.data.content?.[0]?.text || '').trim();
+  return (await callGemini(system, user, 600)).trim();
 }
 
-// ── Company Research (Claude API via web search context) ─────────────────────
+// ── Company Research (Gemini) ─────────────────────────────────────────────────
 
 export interface CompanyInsights {
   overview: string;
-  culture_score?: number;         // 1-5 if available
-  avg_salary?: string;            // salary range for the role at this company
-  interview_difficulty?: string;  // Easy / Medium / Hard
+  culture_score?: number;
+  avg_salary?: string;
+  interview_difficulty?: string;
   common_interview_topics: string[];
   pros: string[];
   cons: string[];
-  glassdoor_tip: string;          // what to look for on Glassdoor manually
+  glassdoor_tip: string;
   sources_note: string;
 }
 
 export async function researchCompany(
   company: string,
   jobTitle: string,
-  apiKey?: string
 ): Promise<CompanyInsights> {
-  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (!key) throw new Error('ANTHROPIC_API_KEY não configurada.');
-
-  const prompt = `Você é um assistente de carreira especializado.
-Com base no seu conhecimento sobre a empresa "${company}" e a vaga "${jobTitle}", forneça informações úteis para um candidato.
+  const system = 'Você é um assistente de carreira especializado em mercado de trabalho brasileiro.';
+  const user = `Com base no seu conhecimento sobre a empresa "${company}" e a vaga "${jobTitle}", forneça informações úteis para um candidato.
 
 Responda APENAS com JSON válido (sem texto extra):
 {
@@ -226,13 +225,7 @@ Responda APENAS com JSON válido (sem texto extra):
 Se não tiver informações confiáveis sobre a empresa, use o setor/tamanho inferido pelo nome para dar estimativas razoáveis.
 Priorize dados sobre empresas brasileiras conhecidas (Nubank, iFood, Mercado Livre, Totvs, Stefanini, etc.) se aplicável.`;
 
-  const resp = await axios.post(CLAUDE_API, {
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 800,
-    messages: [{ role: 'user', content: prompt }],
-  }, { headers: CLAUDE_HEADERS(key), timeout: 30000 });
-
-  const raw = (resp.data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+  const raw = (await callGemini(system, user, 800)).replace(/```json|```/g, '').trim();
   try {
     return JSON.parse(raw) as CompanyInsights;
   } catch {
@@ -247,7 +240,7 @@ Priorize dados sobre empresas brasileiras conhecidas (Nubank, iFood, Mercado Liv
   }
 }
 
-// ── Interview Questions (Claude API) ─────────────────────────────────────────
+// ── Interview Questions (Gemini) ──────────────────────────────────────────────
 
 export interface InterviewQuestion {
   question: string;
@@ -258,15 +251,15 @@ export interface InterviewQuestion {
 export async function generateInterviewQuestions(
   job: Record<string, any>,
   profile: UserProfile,
-  apiKey?: string
 ): Promise<InterviewQuestion[]> {
-  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (!key) throw new Error('ANTHROPIC_API_KEY não configurada. Adicione ao .env.');
-
   const language = detectLanguage([job['title'], job['description']].filter(Boolean).join(' '));
   const isPt = language === 'pt';
 
-  const prompt = isPt
+  const system = isPt
+    ? 'Você é um especialista em recrutamento e preparo para entrevistas.'
+    : 'You are a recruitment and interview preparation expert.';
+
+  const user = isPt
     ? `Com base na vaga e perfil abaixo, gere 7 perguntas de entrevista realistas que este candidato provavelmente enfrentará.
 Responda APENAS com JSON válido — array de objetos:
 [{"question":"...","category":"behavioral|technical|situational|culture","tip":"dica curta de como responder bem"}]
@@ -296,13 +289,7 @@ Level: ${(profile.summary || '').slice(0, 200)}
 
 Recommended mix: 2 technical, 2 behavioral, 2 situational, 1 culture/values.`;
 
-  const resp = await axios.post(CLAUDE_API, {
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1200,
-    messages: [{ role: 'user', content: prompt }],
-  }, { headers: CLAUDE_HEADERS(key), timeout: 30000 });
-
-  const raw = (resp.data.content?.[0]?.text || '[]').replace(/```json|```/g, '').trim();
+  const raw = (await callGemini(system, user, 1200)).replace(/```json|```/g, '').trim();
   try {
     return JSON.parse(raw) as InterviewQuestion[];
   } catch {
@@ -310,7 +297,7 @@ Recommended mix: 2 technical, 2 behavioral, 2 situational, 1 culture/values.`;
   }
 }
 
-// ── CV Tailoring (Claude API) ─────────────────────────────────────────────────
+// ── CV Tailoring (Gemini) ─────────────────────────────────────────────────────
 
 export interface TailorResult {
   summary: string;
@@ -322,15 +309,15 @@ export interface TailorResult {
 export async function tailorCv(
   job: Record<string, any>,
   profile: UserProfile,
-  apiKey?: string
 ): Promise<TailorResult> {
-  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (!key) throw new Error('ANTHROPIC_API_KEY não configurada. Adicione ao .env para usar esta função.');
-
   const language = detectLanguage([job['title'], job['description']].filter(Boolean).join(' '));
   const isPt = language === 'pt';
 
-  const prompt = isPt
+  const system = isPt
+    ? 'Você é um especialista em otimização de currículos para ATS e recrutadores.'
+    : 'You are an expert in CV optimization for ATS and recruiters.';
+
+  const user = isPt
     ? `Analise a vaga abaixo e sugira como o candidato deve adaptar seu currículo para maximizar o match com ATS e chamar a atenção do recrutador.
 Responda APENAS com JSON válido:
 {"summary":"resumo de 2-3 frases focado nesta vaga","highlights":["bullet 1","bullet 2","bullet 3"],"keywords_to_add":["k1","k2","k3"],"advice":"dica estratégica de 1-2 frases"}
@@ -356,13 +343,7 @@ CURRENT PROFILE:
 Skills: ${(profile.skills || []).join(', ')}
 Current summary: ${profile.summary || '(no summary)'}`;
 
-  const resp = await axios.post(CLAUDE_API, {
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 700,
-    messages: [{ role: 'user', content: prompt }],
-  }, { headers: CLAUDE_HEADERS(key), timeout: 30000 });
-
-  const raw = (resp.data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+  const raw = (await callGemini(system, user, 700)).replace(/```json|```/g, '').trim();
   try {
     return JSON.parse(raw) as TailorResult;
   } catch {
