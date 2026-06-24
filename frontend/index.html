@@ -506,7 +506,17 @@
             </div>
             <input type="file" id="cv-file-input" accept=".pdf" onchange="handleFileSelect(this)" />
             <div id="cv-file-name" style="margin-top:10px;font-size:13px;color:var(--green);display:none"></div>
-            <div style="margin-top:16px;display:flex;gap:8px">
+            <div style="margin-top:14px">
+              <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Chave Anthropic API <span style="color:var(--muted);font-weight:400">(necessária para análise com IA)</span></label>
+              <div style="display:flex;gap:6px">
+                <input type="password" id="anthropic-key-input" placeholder="sk-ant-..." autocomplete="off"
+                  style="flex:1;font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--fg)"
+                  oninput="saveApiKey(this.value)" />
+                <button class="btn btn-ghost" style="font-size:11px;padding:6px 10px;white-space:nowrap" onclick="toggleKeyVisibility()">👁</button>
+              </div>
+              <div id="api-key-status" style="font-size:11px;margin-top:4px;color:var(--muted)"></div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px">
               <button class="btn btn-ai" style="flex:1" onclick="analyzeCv()" id="analyze-btn" disabled>✨ Analisar com IA</button>
               <button class="btn btn-secondary" onclick="useGabrielProfile()" title="Carregar perfil do Gabriel">📋 Meu CV</button>
             </div>
@@ -1010,10 +1020,39 @@
 
 <script>
 const API = window.location.protocol === 'file:' ? 'http://localhost:3001/api' : window.location.origin + '/api';
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
 
 let allJobs = [], filteredJobs = [], profile = {}, cvAnalysis = null, cvFileBase64 = null, onlyHighMatch = false;
 const tagState = { skills: [], target_roles: [], target_locations: [], blacklist_companies: [] };
+
+// ── API Key management ────────────────────────────────────────────────────────
+function getApiKey() { return localStorage.getItem('anthropic_api_key') || null; }
+
+function saveApiKey(val) {
+  const key = val.trim();
+  if (key) { localStorage.setItem('anthropic_api_key', key); updateApiKeyStatus(true); }
+  else { localStorage.removeItem('anthropic_api_key'); updateApiKeyStatus(false); }
+  _analysisApiKey = key || null;
+}
+
+function updateApiKeyStatus(hasKey) {
+  const el = document.getElementById('api-key-status');
+  if (!el) return;
+  el.textContent = hasKey ? '✅ Chave salva no navegador' : '⚠️ Sem chave — configure ANTHROPIC_API_KEY no backend/.env';
+  el.style.color = hasKey ? 'var(--green)' : 'var(--muted)';
+}
+
+function toggleKeyVisibility() {
+  const inp = document.getElementById('anthropic-key-input');
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function initApiKey() {
+  const key = getApiKey();
+  const inp = document.getElementById('anthropic-key-input');
+  if (inp && key) inp.value = key;
+  updateApiKeyStatus(!!key);
+}
 
 // Gabriel's data extracted from CV upload
 const GABRIEL_CV_DATA = {
@@ -1279,21 +1318,13 @@ async function analyzeCv() {
   document.getElementById('cv-stream-output').textContent = '';
   document.getElementById('analyze-btn').disabled = true;
   try {
-    const response = await fetch(CLAUDE_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: 'Analise o currículo e responda APENAS com JSON válido, sem texto extra:\n{"nome":"...","cargo_atual":"...","anos_experiencia":N,"skills":["..."],"roles":["cargo1","cargo2","cargo3"],"keywords":["k1","k2",...],"nivel":"junior|pleno|senior|especialista","resumo_ia":"2-3 frases sobre o perfil"}\nSkills: tecnologias, linguagens, frameworks. Roles: cargos como aparecem em vagas no Brasil. Keywords: 10 termos para buscas em plataformas como Gupy e Catho.',
-        messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: cvFileBase64 } }, { type: 'text', text: 'Analise e retorne o JSON.' }] }]
-      })
-    });
-    const data = await response.json();
-    const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
-    document.getElementById('cv-stream-output').textContent = raw;
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    cvAnalysis = JSON.parse(cleaned);
+    const data = await api('/cv/analyze', { method: 'POST', body: JSON.stringify({ pdfBase64: cvFileBase64, apiKey: getApiKey() }) });
+    if (data.error) throw new Error(data.error);
+    if (data.raw) {
+      document.getElementById('cv-stream-output').textContent = data.raw;
+      throw new Error('Resposta inesperada da IA — tente novamente.');
+    }
+    cvAnalysis = data;
     showCvResult(cvAnalysis);
     if (allJobs.length > 0) { scoreJobs(allJobs); filteredJobs = [...allJobs]; }
   } catch (err) {
@@ -2081,7 +2112,7 @@ async function generateInterview() {
 
 // ── Analysis Modal ────────────────────────────────────────────────────────────
 let _analysisJobId = null;
-let _analysisApiKey = null;
+let _analysisApiKey = getApiKey();
 
 async function openAnalysisModal(jobId, title, company, initialTab = 'ats') {
   _analysisJobId = jobId;
@@ -2191,6 +2222,7 @@ async function generateTailor() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
+  initApiKey();
   useGabrielProfile(); // loads CV data silently on startup
   loadDashboard();
 });
