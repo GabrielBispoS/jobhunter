@@ -103,17 +103,20 @@ function runMigrations(database: SqlJsDatabase): void {
 
 export async function upsertJobs(jobs: Job[]): Promise<void> {
   const database = await getDb();
+  const sql = `
+    INSERT OR REPLACE INTO jobs
+      (id, title, company, location, remote, salary, salary_min, salary_max,
+       language, description, requirements, url, apply_url, source,
+       posted_at, fetched_at, tags, status)
+    VALUES
+      ($id,$title,$company,$location,$remote,$salary,$salary_min,$salary_max,
+       $language,$description,$requirements,$url,$apply_url,$source,
+       $posted_at,$fetched_at,$tags,$status)
+  `;
+  // Run all inserts in a single transaction, then save once
+  database.run('BEGIN');
   for (const job of jobs) {
-    run(database, `
-      INSERT OR REPLACE INTO jobs
-        (id, title, company, location, remote, salary, salary_min, salary_max,
-         language, description, requirements, url, apply_url, source,
-         posted_at, fetched_at, tags, status)
-      VALUES
-        ($id,$title,$company,$location,$remote,$salary,$salary_min,$salary_max,
-         $language,$description,$requirements,$url,$apply_url,$source,
-         $posted_at,$fetched_at,$tags,$status)
-    `, {
+    database.run(sql, {
       $id: job.id, $title: job.title, $company: job.company,
       $location: job.location ?? null, $remote: job.remote ?? null,
       $salary: job.salary ?? null,
@@ -129,6 +132,8 @@ export async function upsertJobs(jobs: Job[]): Promise<void> {
       $status: job.status || 'new',
     });
   }
+  database.run('COMMIT');
+  save(); // single disk write for the whole batch
 }
 
 export async function getJobs(filters: {
