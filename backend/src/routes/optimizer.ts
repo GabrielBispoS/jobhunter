@@ -12,9 +12,16 @@ const CLAUDE_HEADERS = (key: string) => ({
   'content-type': 'application/json',
 });
 
-export const optimizerRouter = Router();
+function requireApiKey(res: Response): string | null {
+  const key = process.env['ANTHROPIC_API_KEY'];
+  if (!key) {
+    res.status(503).json({ error: 'ANTHROPIC_API_KEY não configurada. Adicione ao backend/.env e reinicie o servidor.' });
+    return null;
+  }
+  return key;
+}
 
-const ApiKeySchema = z.object({ apiKey: z.string().max(500).optional() });
+export const optimizerRouter = Router();
 
 optimizerRouter.get('/jobs/:id/ats', async (req: Request, res: Response) => {
   const job = await getJobById(req.params['id']!);
@@ -30,13 +37,13 @@ optimizerRouter.get('/jobs/:id/ats', async (req: Request, res: Response) => {
 });
 
 optimizerRouter.post('/jobs/:id/cover-letter', async (req: Request, res: Response) => {
-  const body = ApiKeySchema.safeParse(req.body);
+  const key = requireApiKey(res); if (!key) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
   const profile = await getProfile();
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de gerar carta' }); return; }
   try {
-    const letter = await generateCoverLetter(job, profile, body.success ? body.data.apiKey : undefined);
+    const letter = await generateCoverLetter(job, profile, key);
     res.json({ cover_letter: letter });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -44,15 +51,11 @@ optimizerRouter.post('/jobs/:id/cover-letter', async (req: Request, res: Respons
 });
 
 optimizerRouter.post('/jobs/:id/company-insights', async (req: Request, res: Response) => {
-  const body = ApiKeySchema.safeParse(req.body);
+  const key = requireApiKey(res); if (!key) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
   try {
-    const insights = await researchCompany(
-      job['company'] as string,
-      job['title'] as string,
-      body.success ? body.data.apiKey : undefined
-    );
+    const insights = await researchCompany(job['company'] as string, job['title'] as string, key);
     res.json(insights);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -60,13 +63,13 @@ optimizerRouter.post('/jobs/:id/company-insights', async (req: Request, res: Res
 });
 
 optimizerRouter.post('/jobs/:id/interview-questions', async (req: Request, res: Response) => {
-  const body = ApiKeySchema.safeParse(req.body);
+  const key = requireApiKey(res); if (!key) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
   const profile = await getProfile();
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de gerar perguntas' }); return; }
   try {
-    const questions = await generateInterviewQuestions(job, profile, body.success ? body.data.apiKey : undefined);
+    const questions = await generateInterviewQuestions(job, profile, key);
     res.json({ questions });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -74,13 +77,13 @@ optimizerRouter.post('/jobs/:id/interview-questions', async (req: Request, res: 
 });
 
 optimizerRouter.post('/jobs/:id/tailor-cv', async (req: Request, res: Response) => {
-  const body = ApiKeySchema.safeParse(req.body);
+  const key = requireApiKey(res); if (!key) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
   const profile = await getProfile();
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de adaptar CV' }); return; }
   try {
-    const result = await tailorCv(job, profile, body.success ? body.data.apiKey : undefined);
+    const result = await tailorCv(job, profile, key);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -89,18 +92,13 @@ optimizerRouter.post('/jobs/:id/tailor-cv', async (req: Request, res: Response) 
 
 const CvAnalyzeSchema = z.object({
   pdfBase64: z.string().min(100).max(20_000_000),
-  apiKey: z.string().max(500).optional(),
 });
 
 optimizerRouter.post('/cv/analyze', async (req: Request, res: Response) => {
+  const key = requireApiKey(res); if (!key) return;
   const parsed = CvAnalyzeSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Envie { pdfBase64: "..." } com o PDF em base64.' });
-    return;
-  }
-  const key = parsed.data.apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (!key) {
-    res.status(400).json({ error: 'Configure ANTHROPIC_API_KEY no .env do backend.' });
     return;
   }
   try {
