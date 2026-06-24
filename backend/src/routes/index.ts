@@ -21,7 +21,7 @@ import { gupyEasyApply, parseGupyUrl } from '../scrapers/gupy_apply';
 import {
   upsertJobs, getJobs, getJobById, updateJobStatus,
   createApplication, updateApplication, getApplications,
-  getProfile, updateProfile, getStats, getDb, all, run as dbRun,
+  getProfile, updateProfile, getStats, getApplicationStats, getDb, all, run as dbRun,
   getPendingFollowUps, markFollowUpSent,
 } from '../db';
 import { SearchConfig, Job } from '../types';
@@ -78,6 +78,7 @@ function validate<T>(schema: z.ZodSchema<T>, data: unknown, res: Response): T | 
 // ── Meta ──────────────────────────────────────────────────────────────────────
 
 router.get('/stats', async (_req: Request, res: Response) => { res.json(await getStats()); });
+router.get('/stats/applications', async (_req: Request, res: Response) => { res.json(await getApplicationStats()); });
 
 // Expand keywords via Claude API — called by frontend before scraping
 router.post('/expand-keywords', async (req: Request, res: Response) => {
@@ -144,8 +145,17 @@ function applyProfileFilters(jobs: Record<string, any>[], profile: import('../ty
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 router.get('/jobs', async (req: Request, res: Response) => {
-  const { source, status, search, limit, offset } = req.query;
-  let jobs = await getJobs({ source: source as string|undefined, status: status as string|undefined, search: search as string|undefined, limit: limit ? Number(limit) : 50, offset: offset ? Number(offset) : 0 });
+  const { source, status, search, limit, offset, salary_min, remote, language } = req.query;
+  let jobs = await getJobs({
+    source: source as string|undefined,
+    status: status as string|undefined,
+    search: search as string|undefined,
+    limit: limit ? Number(limit) : 50,
+    offset: offset ? Number(offset) : 0,
+    salary_min: salary_min ? Number(salary_min) : undefined,
+    remote: remote as string|undefined,
+    language: language as string|undefined,
+  });
 
   // Apply profile filters unless explicitly disabled
   if (req.query['profile_filter'] !== 'false') {
@@ -184,6 +194,40 @@ router.delete('/jobs/all', async (req: Request, res: Response) => {
   const before = (get(db, 'SELECT COUNT(*) as n FROM jobs') as any)?.n ?? 0;
   dbRun(db, 'DELETE FROM jobs');
   res.json({ ok: true, deleted: before });
+});
+
+// Bulk status update (ignore/save multiple jobs at once)
+router.patch('/jobs/bulk-status', async (req: Request, res: Response) => {
+  const { ids, status } = req.body as { ids?: string[]; status?: string };
+  if (!Array.isArray(ids) || !ids.length || !status) {
+    res.status(400).json({ error: 'ids[] e status são obrigatórios' }); return;
+  }
+  const allowed = new Set(['new', 'saved', 'ignored']);
+  if (!allowed.has(status)) { res.status(400).json({ error: 'status inválido' }); return; }
+  const db = await getDb();
+  for (const id of ids.slice(0, 200)) {
+    dbRun(db, 'UPDATE jobs SET status = $s WHERE id = $id', { $s: status, $id: id });
+  }
+  res.json({ ok: true, updated: ids.length });
+});
+
+// Export endpoints
+router.get('/export/jobs', async (req: Request, res: Response) => {
+  const jobs = await getJobs({ limit: 5000 });
+  const headers = ['id','title','company','location','remote','salary','source','language','status','url','fetched_at'];
+  const rows = jobs.map(j => headers.map(h => JSON.stringify(String(j[h] ?? ''))).join(','));
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="jobhunter-vagas.csv"');
+  res.send('﻿' + headers.join(',') + '\n' + rows.join('\n'));
+});
+
+router.get('/export/applications', async (req: Request, res: Response) => {
+  const apps = await getApplications({ limit: 5000 });
+  const headers = ['id','title','company','status','applied_at','response_at','notes','url'];
+  const rows = apps.map(a => headers.map(h => JSON.stringify(String(a[h] ?? ''))).join(','));
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="jobhunter-candidaturas.csv"');
+  res.send('﻿' + headers.join(',') + '\n' + rows.join('\n'));
 });
 
 // ── Scraper Registry ──────────────────────────────────────────────────────────

@@ -185,6 +185,131 @@ Return ONLY the cover letter, no title or explanations.`;
   return (resp.data.content?.[0]?.text || '').trim();
 }
 
+// ── Company Research (Claude API via web search context) ─────────────────────
+
+export interface CompanyInsights {
+  overview: string;
+  culture_score?: number;         // 1-5 if available
+  avg_salary?: string;            // salary range for the role at this company
+  interview_difficulty?: string;  // Easy / Medium / Hard
+  common_interview_topics: string[];
+  pros: string[];
+  cons: string[];
+  glassdoor_tip: string;          // what to look for on Glassdoor manually
+  sources_note: string;
+}
+
+export async function researchCompany(
+  company: string,
+  jobTitle: string,
+  apiKey?: string
+): Promise<CompanyInsights> {
+  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
+  if (!key) throw new Error('ANTHROPIC_API_KEY não configurada.');
+
+  const prompt = `Você é um assistente de carreira especializado.
+Com base no seu conhecimento sobre a empresa "${company}" e a vaga "${jobTitle}", forneça informações úteis para um candidato.
+
+Responda APENAS com JSON válido (sem texto extra):
+{
+  "overview": "2-3 frases sobre a empresa, cultura e porte",
+  "culture_score": <número 1-5 ou null se incerto>,
+  "avg_salary": "faixa salarial típica para ${jobTitle} nesta empresa ou setor (ex: R$ 8.000 – R$ 14.000)",
+  "interview_difficulty": "Fácil|Médio|Difícil",
+  "common_interview_topics": ["tópico técnico 1", "tópico 2", "tópico 3"],
+  "pros": ["aspecto positivo 1", "aspecto positivo 2"],
+  "cons": ["ponto de atenção 1", "ponto de atenção 2"],
+  "glassdoor_tip": "dica específica do que verificar no Glassdoor/LinkedIn para esta empresa",
+  "sources_note": "Nota: dados baseados em conhecimento geral até data de corte. Verifique Glassdoor e LinkedIn para informações atualizadas."
+}
+
+Se não tiver informações confiáveis sobre a empresa, use o setor/tamanho inferido pelo nome para dar estimativas razoáveis.
+Priorize dados sobre empresas brasileiras conhecidas (Nubank, iFood, Mercado Livre, Totvs, Stefanini, etc.) se aplicável.`;
+
+  const resp = await axios.post(CLAUDE_API, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 800,
+    messages: [{ role: 'user', content: prompt }],
+  }, { headers: CLAUDE_HEADERS(key), timeout: 30000 });
+
+  const raw = (resp.data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(raw) as CompanyInsights;
+  } catch {
+    return {
+      overview: raw.slice(0, 200),
+      common_interview_topics: [],
+      pros: [],
+      cons: [],
+      glassdoor_tip: 'Pesquise a empresa no Glassdoor para avaliações de funcionários.',
+      sources_note: 'Dados não puderam ser estruturados.',
+    };
+  }
+}
+
+// ── Interview Questions (Claude API) ─────────────────────────────────────────
+
+export interface InterviewQuestion {
+  question: string;
+  category: 'behavioral' | 'technical' | 'situational' | 'culture';
+  tip: string;
+}
+
+export async function generateInterviewQuestions(
+  job: Record<string, any>,
+  profile: UserProfile,
+  apiKey?: string
+): Promise<InterviewQuestion[]> {
+  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
+  if (!key) throw new Error('ANTHROPIC_API_KEY não configurada. Adicione ao .env.');
+
+  const language = detectLanguage([job['title'], job['description']].filter(Boolean).join(' '));
+  const isPt = language === 'pt';
+
+  const prompt = isPt
+    ? `Com base na vaga e perfil abaixo, gere 7 perguntas de entrevista realistas que este candidato provavelmente enfrentará.
+Responda APENAS com JSON válido — array de objetos:
+[{"question":"...","category":"behavioral|technical|situational|culture","tip":"dica curta de como responder bem"}]
+
+VAGA:
+Título: ${job['title']}
+Empresa: ${job['company']}
+Descrição: ${(job['description'] || '').slice(0, 800)}
+
+CANDIDATO:
+Skills: ${(profile.skills || []).join(', ')}
+Nível: ${(profile.summary || '').slice(0, 200)}
+
+Mix recomendado: 2 técnicas, 2 comportamentais, 2 situacionais, 1 cultura/valores.`
+    : `Based on the job and profile below, generate 7 realistic interview questions this candidate will likely face.
+Respond ONLY with valid JSON — array of objects:
+[{"question":"...","category":"behavioral|technical|situational|culture","tip":"short tip on how to answer well"}]
+
+JOB:
+Title: ${job['title']}
+Company: ${job['company']}
+Description: ${(job['description'] || '').slice(0, 800)}
+
+CANDIDATE:
+Skills: ${(profile.skills || []).join(', ')}
+Level: ${(profile.summary || '').slice(0, 200)}
+
+Recommended mix: 2 technical, 2 behavioral, 2 situational, 1 culture/values.`;
+
+  const resp = await axios.post(CLAUDE_API, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1200,
+    messages: [{ role: 'user', content: prompt }],
+  }, { headers: CLAUDE_HEADERS(key), timeout: 30000 });
+
+  const raw = (resp.data.content?.[0]?.text || '[]').replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(raw) as InterviewQuestion[];
+  } catch {
+    return [];
+  }
+}
+
 // ── CV Tailoring (Claude API) ─────────────────────────────────────────────────
 
 export interface TailorResult {

@@ -133,6 +133,7 @@ export async function upsertJobs(jobs: Job[]): Promise<void> {
 
 export async function getJobs(filters: {
   source?: string; status?: string; search?: string; limit?: number; offset?: number;
+  salary_min?: number; remote?: string; language?: string;
 } = {}): Promise<Record<string, any>[]> {
   const database = await getDb();
   let sql = `SELECT j.*, a.status as app_status, a.id as app_id
@@ -141,6 +142,9 @@ export async function getJobs(filters: {
   if (filters.source) { sql += ' AND j.source = $source'; params['$source'] = filters.source; }
   if (filters.status) { sql += ' AND j.status = $status'; params['$status'] = filters.status; }
   if (filters.search) { sql += ' AND (j.title LIKE $search OR j.company LIKE $search)'; params['$search'] = `%${filters.search}%`; }
+  if (filters.salary_min) { sql += ' AND (j.salary_min >= $salary_min OR j.salary_max >= $salary_min)'; params['$salary_min'] = filters.salary_min; }
+  if (filters.remote) { sql += ' AND j.remote = $remote'; params['$remote'] = filters.remote; }
+  if (filters.language) { sql += ' AND j.language = $language'; params['$language'] = filters.language; }
   sql += ' ORDER BY j.fetched_at DESC LIMIT $limit OFFSET $offset';
   params['$limit'] = filters.limit || 50;
   params['$offset'] = filters.offset || 0;
@@ -208,8 +212,66 @@ export async function getStats(): Promise<object> {
     interview: count("SELECT COUNT(*) as n FROM applications WHERE status='interview'"),
     rejected:  count("SELECT COUNT(*) as n FROM applications WHERE status='rejected'"),
     offer:     count("SELECT COUNT(*) as n FROM applications WHERE status='offer'"),
+    ghosted:   count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted'"),
     by_source: all(database, 'SELECT source, COUNT(*) as n FROM jobs GROUP BY source'),
   };
+}
+
+export async function getApplicationStats(): Promise<object> {
+  const database = await getDb();
+  const count = (sql: string, params?: Record<string,any>) => (get(database, sql, params) as any)?.n ?? 0;
+  const val   = (sql: string, params?: Record<string,any>) => (get(database, sql, params) as any)?.v ?? null;
+
+  const applied   = count("SELECT COUNT(*) as n FROM applications WHERE status IN ('applied','interview','offer','rejected','ghosted')");
+  const responded = count("SELECT COUNT(*) as n FROM applications WHERE response_at IS NOT NULL");
+  const interview = count("SELECT COUNT(*) as n FROM applications WHERE status='interview'");
+  const offer     = count("SELECT COUNT(*) as n FROM applications WHERE status='offer'");
+  const ghosted   = count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted'");
+
+  const avgDaysToResponse = val(`
+    SELECT ROUND(AVG((julianday(response_at) - julianday(applied_at))), 1) as v
+    FROM applications WHERE response_at IS NOT NULL AND applied_at IS NOT NULL
+  `);
+
+  const byWeek = all(database, `
+    SELECT strftime('%Y-W%W', applied_at) as week, COUNT(*) as n
+    FROM applications WHERE applied_at IS NOT NULL
+    GROUP BY week ORDER BY week DESC LIMIT 8
+  `);
+
+  const byStatus = all(database, `
+    SELECT status, COUNT(*) as n FROM applications GROUP BY status ORDER BY n DESC
+  `);
+
+  return {
+    applied,
+    responded,
+    interview,
+    offer,
+    ghosted,
+    response_rate: applied > 0 ? Math.round((responded / applied) * 100) : 0,
+    interview_rate: applied > 0 ? Math.round((interview / applied) * 100) : 0,
+    offer_rate: applied > 0 ? Math.round((offer / applied) * 100) : 0,
+    avg_days_to_response: avgDaysToResponse,
+    by_week: byWeek.reverse(),
+    by_status: byStatus,
+  };
+}
+
+export async function archiveOldJobs(daysOld = 45): Promise<number> {
+  const database = await getDb();
+  const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+  const before = (get(database, `
+    SELECT COUNT(*) as n FROM jobs
+    WHERE status = 'new' AND fetched_at < $cutoff
+    AND id NOT IN (SELECT job_id FROM applications)
+  `, { $cutoff: cutoff }) as any)?.n ?? 0;
+  run(database, `
+    DELETE FROM jobs
+    WHERE status = 'new' AND fetched_at < $cutoff
+    AND id NOT IN (SELECT job_id FROM applications)
+  `, { $cutoff: cutoff });
+  return before;
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────

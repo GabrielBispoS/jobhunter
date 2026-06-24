@@ -7,7 +7,7 @@
 import cron from 'node-cron';
 import { getDb, all, get, run as dbRun } from './db';
 import { sendJobAlert, sendFollowUpReminder, isMailConfigured } from './mailer';
-import { getPendingFollowUps, markFollowUpSent } from './db';
+import { getPendingFollowUps, markFollowUpSent, archiveOldJobs } from './db';
 import { fingerprint, deduplicateJobs } from './dedup';
 import { Job, SearchConfig } from './types';
 
@@ -161,6 +161,15 @@ export async function startCronJobs(): Promise<void> {
   // Daily follow-up check at 08:05
   cron.schedule('5 8 * * *', () => checkFollowUps(), { timezone: 'America/Sao_Paulo' });
   console.log('⏰ Follow-up check scheduled — 08:05 daily');
+
+  // Daily cleanup at 03:00 — archive 45-day-old unacted jobs
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      const removed = await archiveOldJobs(45);
+      if (removed > 0) console.log(`🗑 Auto-cleanup: ${removed} vagas antigas arquivadas`);
+    } catch (err: any) { console.error('❌ Auto-cleanup error:', err.message); }
+  }, { timezone: 'America/Sao_Paulo' });
+  console.log('⏰ Auto-cleanup scheduled — 03:00 daily');
 
   // Default schedule: if no DB config, use env variable
   const defaultCron = process.env['DEFAULT_CRON'];
