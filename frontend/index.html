@@ -306,9 +306,30 @@
     .page-num-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--fg); font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .page-num-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
     .page-num-btn:hover:not(.active) { background: var(--surface3, #2a2a2a); }
+
+    /* ── Login Overlay ── */
+    #login-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: none; align-items: center; justify-content: center; }
+    .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px; width: 340px; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.6); }
+    .login-card input[type=password] { width: 100%; padding: 11px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; margin-bottom: 8px; font-family: inherit; }
+    .login-card input[type=password]:focus { border-color: var(--accent); }
+    .login-card button { width: 100%; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .login-card button:hover { opacity: 0.88; }
+    #logout-btn { display: none; margin-top: auto; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--muted); border: 1px solid var(--border); align-items: center; gap: 8px; transition: all 0.15s; }
+    #logout-btn:hover { border-color: var(--red); color: var(--red); }
   </style>
 </head>
 <body>
+
+<!-- Login Overlay -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--accent);margin-bottom:6px">⚡ Job<span style="color:var(--accent2)">Hunter</span></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Digite a senha para continuar</div>
+    <input type="password" id="login-pw" placeholder="Senha de acesso" onkeydown="if(event.key==='Enter')doLogin()" autofocus />
+    <div id="login-err" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;text-align:left;padding:0 2px"></div>
+    <button onclick="doLogin()">Entrar</button>
+  </div>
+</div>
 
 <nav class="sidebar">
   <div class="logo">⚡ Job<span>Hunter</span></div>
@@ -320,6 +341,7 @@
     <div class="nav-item" onclick="showPage('schedules')" id="nav-schedules"><span class="nav-icon">⏰</span> Agendamentos</div>
     <div class="nav-item" onclick="showPage('profile')" id="nav-profile"><span class="nav-icon">👤</span> Perfil</div>
   </div>
+  <div id="logout-btn" onclick="logout()"><span>🚪</span> Sair</div>
 </nav>
 
 <div class="main">
@@ -519,7 +541,6 @@
             <div id="cv-file-name" style="margin-top:10px;font-size:13px;color:var(--green);display:none"></div>
             <div style="margin-top:16px;display:flex;gap:8px">
               <button class="btn btn-ai" style="flex:1" onclick="analyzeCv()" id="analyze-btn" disabled>✨ Analisar com IA</button>
-              <button class="btn btn-secondary" onclick="useGabrielProfile()" title="Carregar perfil do Gabriel">📋 Meu CV</button>
             </div>
             <div style="margin-top:10px;font-size:11px;color:var(--muted);line-height:1.5">
               Requer <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">GEMINI_API_KEY</code> configurado em <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">backend/.env</code>
@@ -566,7 +587,7 @@
             <div style="text-align:center;padding:32px;color:var(--muted)">
               <div style="font-size:48px;margin-bottom:12px">🤖</div>
               <div style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px">Aguardando análise</div>
-              <div style="font-size:13px">Faça upload do seu PDF ou clique em "Meu CV" para carregar o perfil pré-configurado.</div>
+              <div style="font-size:13px">Faça upload do seu PDF e clique em "Analisar com IA" para extrair seu perfil automaticamente.</div>
             </div>
           </div>
         </div>
@@ -1028,28 +1049,6 @@ const API = window.location.protocol === 'file:' ? 'http://localhost:3001/api' :
 let allJobs = [], filteredJobs = [], profile = {}, cvAnalysis = null, cvFileBase64 = null, onlyHighMatch = false;
 const tagState = { skills: [], target_roles: [], target_locations: [], blacklist_companies: [] };
 
-// Gabriel's data extracted from CV upload
-const GABRIEL_CV_DATA = {
-  nome: 'Gabriel Fernando',
-  cargo_atual: 'Desenvolvedor Full Stack',
-  anos_experiencia: 5,
-  skills: ['Java', 'Spring Boot', 'Microsserviços', 'React.js', 'Angular', 'Vue.js', 'PostgreSQL', 'SQL Server', 'RabbitMQ', 'Kafka', 'Docker', 'AWS', 'Grafana', 'Prometheus', 'JUnit', 'REST API', 'Python', 'Firebase', 'Crystal Reports'],
-  roles: ['Desenvolvedor Full Stack Java', 'Engenheiro de Software Backend', 'Java Developer Spring Boot', 'Backend Engineer Sênior', 'Dev Full Stack'],
-  keywords: ['Java', 'Spring Boot', 'microsserviços', 'backend', 'full stack', 'AWS', 'Docker', 'Kafka', 'REST API', 'PostgreSQL', 'Spring', 'JVM'],
-  nivel: 'senior',
-  resumo_ia: 'Engenheiro Full Stack Sênior com 5+ anos em Java/Spring Boot e sistemas de alta criticidade. Experiência em ecossistemas Magalu/Unilever (Pricing, SRE) e GovTech (ERP tributário). Forte em arquitetura assíncrona Kafka/RabbitMQ, cloud AWS e observabilidade com Grafana.'
-};
-const GABRIEL_PROFILE = {
-  name: 'Gabriel Fernando',
-  email: 'gabriel_nando_@hotmail.com',
-  phone: '34998884925',
-  linkedin: 'https://www.linkedin.com/in/gabrielfernandobispo',
-  skills: GABRIEL_CV_DATA.skills,
-  target_roles: GABRIEL_CV_DATA.roles,
-  target_locations: ['Uberlândia', 'Remoto', 'São Paulo'],
-  blacklist_companies: [],
-  summary: GABRIEL_CV_DATA.resumo_ia
-};
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 function showPage(page) {
@@ -1068,14 +1067,72 @@ function showPage(page) {
   if (page === 'schedules') loadSchedules();
 }
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+let _authToken = sessionStorage.getItem('jh_token') || '';
+
+function showLoginOverlay(msg) {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  const err = document.getElementById('login-err');
+  if (err) { err.textContent = msg || ''; err.style.display = msg ? 'block' : 'none'; }
+}
+
+async function doLogin() {
+  const pw = document.getElementById('login-pw');
+  const err = document.getElementById('login-err');
+  err.style.display = 'none';
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw.value }),
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.error || 'Senha incorreta'; err.style.display = 'block'; return; }
+    _authToken = data.token || '';
+    if (_authToken) sessionStorage.setItem('jh_token', _authToken);
+    document.getElementById('login-overlay').style.display = 'none';
+    if (_authToken) document.getElementById('logout-btn').style.display = 'flex';
+    loadDashboard();
+  } catch { err.textContent = 'Erro de conexão com o servidor'; err.style.display = 'block'; }
+}
+
+function logout() {
+  _authToken = '';
+  sessionStorage.removeItem('jh_token');
+  document.getElementById('logout-btn').style.display = 'none';
+  showLoginOverlay('');
+}
+
+async function initAuth() {
+  try {
+    await api('/stats');
+    document.getElementById('login-overlay').style.display = 'none';
+    if (_authToken) document.getElementById('logout-btn').style.display = 'flex';
+    loadDashboard();
+  } catch (e) {
+    if (e.message !== 'auth') {
+      document.getElementById('login-overlay').style.display = 'none';
+      loadDashboard();
+    }
+    // 401: showLoginOverlay already called inside api()
+  }
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
   try {
-    const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    const headers = { 'Content-Type': 'application/json' };
+    if (_authToken) headers['Authorization'] = 'Bearer ' + _authToken;
+    const res = await fetch(API + path, { headers, ...opts });
+    if (res.status === 401) {
+      showLoginOverlay('Sessão expirada. Faça login novamente.');
+      throw new Error('auth');
+    }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   } catch (e) {
-    toast('Erro: ' + e.message, 'error');
+    if (e.message !== 'auth') toast('Erro: ' + e.message, 'error');
     throw e;
   }
 }
@@ -1373,13 +1430,6 @@ async function analyzeCv() {
   }
 }
 
-function useGabrielProfile() {
-  cvAnalysis = GABRIEL_CV_DATA;
-  showCvResult(cvAnalysis);
-  if (allJobs.length > 0) { scoreJobs(allJobs); filteredJobs = [...allJobs]; }
-  toast('✅ Perfil carregado do seu CV!', 'success');
-}
-
 function showCvResult(data) {
   document.getElementById('cv-analysis-result').style.display = 'block';
   document.getElementById('cv-thinking').style.display = 'none';
@@ -1423,8 +1473,7 @@ function applyProfileFromCv() {
 async function loadProfile() {
   try {
     profile = await api('/profile');
-    if (!profile.name) profile = GABRIEL_PROFILE;
-  } catch { profile = GABRIEL_PROFILE; }
+  } catch { profile = {}; }
   document.getElementById('p-name').value = profile.name || '';
   document.getElementById('p-email').value = profile.email || '';
   document.getElementById('p-phone').value = profile.phone || '';
@@ -2075,7 +2124,7 @@ async function generateCompanyInsights() {
   document.getElementById('gen-company-btn').disabled = true;
   try {
     const r = await api('/jobs/' + _analysisJobId + '/company-insights', {
-      method: 'POST', body: JSON.stringify({ apiKey: _analysisApiKey }),
+      method: 'POST', body: JSON.stringify({}),
     });
     document.getElementById('company-overview').textContent = r.overview || '—';
     // Culture score stars
@@ -2124,7 +2173,7 @@ async function generateInterview() {
   };
   try {
     const r = await api('/jobs/' + _analysisJobId + '/interview-questions', {
-      method: 'POST', body: JSON.stringify({ apiKey: _analysisApiKey }),
+      method: 'POST', body: JSON.stringify({}),
     });
     const result = document.getElementById('interview-result');
     result.innerHTML = (r.questions || []).map((q, i) => `
@@ -2150,7 +2199,7 @@ async function generateInterview() {
 
 // ── Analysis Modal ────────────────────────────────────────────────────────────
 let _analysisJobId = null;
-let _analysisApiKey = null;
+
 
 async function openAnalysisModal(jobId, title, company, initialTab = 'ats') {
   _analysisJobId = jobId;
@@ -2210,7 +2259,7 @@ async function generateLetter() {
   try {
     const r = await api('/jobs/' + _analysisJobId + '/cover-letter', {
       method: 'POST',
-      body: JSON.stringify({ apiKey: _analysisApiKey }),
+      body: JSON.stringify({}),
     });
     document.getElementById('letter-output').textContent = r.cover_letter;
     document.getElementById('letter-output').style.display = 'block';
@@ -2238,7 +2287,7 @@ async function generateTailor() {
   try {
     const r = await api('/jobs/' + _analysisJobId + '/tailor-cv', {
       method: 'POST',
-      body: JSON.stringify({ apiKey: _analysisApiKey }),
+      body: JSON.stringify({}),
     });
     document.getElementById('tailor-summary').textContent = r.summary || '—';
     document.getElementById('tailor-highlights').innerHTML = (r.highlights || []).map(h =>
@@ -2260,8 +2309,7 @@ async function generateTailor() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
-  useGabrielProfile(); // loads CV data silently on startup
-  loadDashboard();
+  initAuth();
 });
 </script>
 </body>

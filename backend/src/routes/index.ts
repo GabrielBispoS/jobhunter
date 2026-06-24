@@ -48,7 +48,6 @@ const ScrapeBodySchema = z.object({
     csod:  z.array(z.string().max(100)).optional(),
   }).optional(),
   notify:  z.boolean().optional(),
-  apiKey:  z.string().max(500).optional(),
 });
 
 const ApplicationCreateSchema = z.object({
@@ -80,16 +79,16 @@ function validate<T>(schema: z.ZodSchema<T>, data: unknown, res: Response): T | 
 router.get('/stats', async (_req: Request, res: Response) => { res.json(await getStats()); });
 router.get('/stats/applications', async (_req: Request, res: Response) => { res.json(await getApplicationStats()); });
 
-// Expand keywords via Claude API — called by frontend before scraping
+// Expand keywords using local dictionary or Ollama/Claude (server-side key only)
 router.post('/expand-keywords', async (req: Request, res: Response) => {
-  const { keywords, apiKey } = req.body as { keywords?: string[]; apiKey?: string };
+  const { keywords } = req.body as { keywords?: string[] };
   if (!keywords?.length) { res.status(400).json({ error: 'keywords required' }); return; }
   try {
-    const expanded = await expandKeywords(keywords, apiKey);
+    const expanded = await expandKeywords(keywords);
     const queries = buildSearchQueries(expanded);
     res.json({ expanded, queries });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erro ao expandir palavras-chave.' });
   }
 });
 
@@ -284,7 +283,7 @@ router.post('/scrape/stream', async (req: Request, res: Response) => {
   // Expand keywords via Claude API before starting scrape
   let expandedSearch;
   try {
-    expandedSearch = await expandKeywords(config.keywords, config.apiKey as string | undefined);
+    expandedSearch = await expandKeywords(config.keywords);
   } catch {
     expandedSearch = { original: config.keywords, expanded: [config.keywords], allTerms: config.keywords, summary: '', engine: 'local' as const };
   }

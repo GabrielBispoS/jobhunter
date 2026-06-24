@@ -213,7 +213,6 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function expandKeywords(
   keywords: string[],
-  apiKey?: string
 ): Promise<ExpandedSearch> {
   const clean = keywords.map(k => k.trim()).filter(Boolean);
   const cacheKey = clean.map(k => k.toLowerCase()).sort().join('|');
@@ -232,8 +231,8 @@ export async function expandKeywords(
   } catch (err: any) {
     console.log(`⚠️ Ollama unavailable (${err.message}) — trying next`);
 
-    // 2. Try Claude API if key provided
-    const key = apiKey || process.env['ANTHROPIC_API_KEY'];
+    // 2. Try Claude API if key is configured
+    const key = process.env['ANTHROPIC_API_KEY'];
     if (key) {
       try {
         result = await expandWithClaude(clean, key);
