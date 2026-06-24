@@ -25,6 +25,9 @@ jobhunter/
 │       ├── cron.ts               # Agendamentos automáticos (node-cron)
 │       ├── routes/
 │       │   └── index.ts          # Todos os endpoints REST
+│       ├── __tests__/
+│       │   ├── dedup.test.ts         # Testes de deduplicação
+│       │   └── keyword_expander.test.ts  # Testes de scoring e expansão
 │       └── scrapers/
 │           ├── gupy.ts           # API pública Gupy + white-labels
 │           ├── gupy_apply.ts     # Gupy Easy Apply (sem login)
@@ -34,6 +37,7 @@ jobhunter/
 │           ├── remoteok.ts       # API pública RemoteOK
 │           ├── weworkremotely.ts # RSS We Work Remotely
 │           ├── vagas_br.ts       # Vagas.com.br + 99Jobs
+│           ├── linkedin.ts       # LinkedIn Jobs (busca pública, sem login)
 │           ├── playwright.ts     # Glassdoor, Catho, InfoJobs + auto-apply
 │           └── global_playwright.ts  # 15+ fontes via Playwright
 ├── frontend/
@@ -101,6 +105,7 @@ Acesse: **http://localhost**
 ### 🌍 Global
 | Fonte | Estratégia |
 |-------|-----------|
+| **LinkedIn Jobs** | Playwright (busca pública, sem login) |
 | **Glassdoor** | Playwright + page.evaluate |
 | **Indeed BR** | Playwright + page.evaluate |
 | **Wellfound** | Playwright |
@@ -244,9 +249,21 @@ DEFAULT_SOURCES=gupy,inhire,geekhunter,remoteok
 
 ---
 
+## 🧪 Testes
+
+```bash
+cd backend && npm test
+```
+
+Cobertura atual: `dedup.ts` (fingerprint, deduplicação, similaridade Jaccard) e `keyword_expander.ts` (scoring de vagas, expansão local).
+
+---
+
 ## 🛡️ Observações
 
 - Playwright usa `networkidle` + `page.evaluate()` para capturar URLs corretas após renderização JS
 - Deduplicação por fingerprint (normalização + Jaccard) evita duplicatas entre fontes
 - Semáforo de concorrência evita OOM — auto-tunado pelo número de CPUs e RAM disponível
+- Filtros de perfil (`blacklist_companies`, `target_roles`, `target_locations`) aplicados automaticamente em `GET /api/jobs`
+- Cache de expansão de keywords (30 min) evita chamadas repetidas ao Ollama/Claude
 - Respeite os Termos de Serviço de cada plataforma
