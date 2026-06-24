@@ -121,6 +121,7 @@
     .src-glassdoor { background: #2a1a10; color: #fb923c; border: 1px solid #5a2a10; }
     .src-catho { background: #2a1a1a; color: #f87171; border: 1px solid #5a1a1a; }
     .src-infojobs { background: #1a2a2a; color: var(--accent2); border: 1px solid #1a4a5a; }
+    .src-linkedin { background: #0a1a2a; color: #60a5fa; border: 1px solid #1a3a5a; }
 
     .remote-tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
     .remote-remote { background: #0a2a1a; color: var(--green); }
@@ -821,14 +822,14 @@ function renderJobsTable(tbodyId, jobs, compact) {
   }
   tbody.innerHTML = jobs.map(j => '<tr>' +
     '<td><div class="job-title">' + esc(j.title) + '</div><div class="job-company">' + esc(j.company) + '</div></td>' +
-    '<td><span class="source-badge src-' + j.source + '">' + j.source + '</span></td>' +
+    '<td><span class="source-badge src-' + esc(j.source) + '">' + esc(j.source) + '</span></td>' +
     '<td style="color:var(--muted);font-size:12px">' + esc(j.location || '—') + '</td>' +
-    (!compact ? '<td>' + (j.remote ? '<span class="remote-tag remote-' + j.remote + '">' + j.remote + '</span>' : '—') + '</td>' : '') +
+    (!compact ? '<td>' + (j.remote ? '<span class="remote-tag remote-' + esc(j.remote) + '">' + esc(j.remote) + '</span>' : '—') + '</td>' : '') +
     '<td>' + matchBadge(j._match) + '</td>' +
     '<td><div class="actions">' +
       '<button class="icon-btn" title="Abrir" onclick="window.open(\'' + esc(j.url) + '\',\'_blank\')">↗</button>' +
-      '<button class="icon-btn apply" title="Candidatar" onclick="applyToJob(\'' + j.id + '\',\'' + esc(j.title) + '\',\'' + j.source + '\')">' + (j.source === 'gupy' ? '⚡' : '✓') + '</button>' +
-      '<button class="icon-btn" title="Salvar" onclick="saveJob(\'' + j.id + '\')">🔖</button>' +
+      '<button class="icon-btn apply" title="Candidatar" onclick="applyToJob(\'' + esc(j.id) + '\',\'' + esc(j.title) + '\',\'' + esc(j.source) + '\')">' + (j.source === 'gupy' ? '⚡' : '✓') + '</button>' +
+      '<button class="icon-btn" title="Salvar" onclick="saveJob(\'' + esc(j.id) + '\')">🔖</button>' +
     '</div></td>' +
   '</tr>').join('');
 }
@@ -969,7 +970,7 @@ function showCvResult(data) {
   const banner = document.getElementById('cv-result-banner');
   banner.classList.add('visible');
   document.getElementById('cv-summary-banner').textContent = data.resumo_ia || '';
-  document.getElementById('cv-chips-container').innerHTML = (data.skills || []).slice(0,6).map(s => '<span class="cv-chip tech">' + esc(s) + '</span>').join('') + (data.nivel ? '<span class="cv-chip role">' + data.nivel + '</span>' : '');
+  document.getElementById('cv-chips-container').innerHTML = (data.skills || []).slice(0,6).map(s => '<span class="cv-chip tech">' + esc(s) + '</span>').join('') + (data.nivel ? '<span class="cv-chip role">' + esc(data.nivel) + '</span>' : '');
   // Matched jobs
   if (allJobs.length > 0) {
     const top = [...allJobs].sort((a,b) => (b._match||0)-(a._match||0)).slice(0,5);
@@ -1114,7 +1115,7 @@ function openProgressModal(sources) {
   const sourceIcons = {
     gupy:'🟢', inhire:'🔵', geekhunter:'🟣', remoteok:'✅', weworkremotely:'💻',
     vagas_br:'💼', '99jobs':'9️⃣', glassdoor:'🟠', catho:'🔴', infojobs:'🩵',
-    programathor:'⚡', hipsters:'🎧', apinfo:'📋', remotar:'🏡', trabalha_brasil:'🇧🇷',
+    linkedin:'💼', programathor:'⚡', hipsters:'🎧', apinfo:'📋', remotar:'🏡', trabalha_brasil:'🇧🇷',
     wellfound:'🦅', indeed:'🔍', dice:'🎲', builtin:'🏗️', ziprecruiter:'📦',
     monster:'👾', revelo:'🚀', csod:'🏦',
   };
@@ -1270,7 +1271,7 @@ function renderTags(field, wrapId) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function esc(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function toast(msg, type = 'info') {
   const el = document.createElement('div');

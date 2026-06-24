@@ -9,7 +9,7 @@ export interface Job {
   requirements?: string[];
   url: string;
   apply_url?: string;
-  source: 'gupy' | 'inhire' | 'glassdoor' | 'catho' | 'infojobs' | 'custom';
+  source: 'gupy' | 'inhire' | 'glassdoor' | 'catho' | 'infojobs' | 'linkedin' | 'custom';
   posted_at?: string;
   fetched_at: string;
   tags?: string[];

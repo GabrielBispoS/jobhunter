@@ -208,37 +208,50 @@ function localExpand(keywords: string[]): ExpandedSearch {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+const expansionCache = new Map<string, { result: ExpandedSearch; ts: number }>();
+const CACHE_TTL_MS = 30 * 60 * 1000;
+
 export async function expandKeywords(
   keywords: string[],
   apiKey?: string
 ): Promise<ExpandedSearch> {
   const clean = keywords.map(k => k.trim()).filter(Boolean);
+  const cacheKey = clean.map(k => k.toLowerCase()).sort().join('|');
+
+  const cached = expansionCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  let result: ExpandedSearch;
 
   // 1. Try Ollama first (free, local)
   try {
-    const result = await expandWithOllama(clean);
+    result = await expandWithOllama(clean);
     console.log(`🦙 Ollama keyword expansion: ${result.allTerms.length} terms`);
-    return result;
   } catch (err: any) {
     console.log(`⚠️ Ollama unavailable (${err.message}) — trying next`);
-  }
 
-  // 2. Try Claude API if key provided
-  const key = apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (key) {
-    try {
-      const result = await expandWithClaude(clean, key);
-      console.log(`🤖 Claude keyword expansion: ${result.allTerms.length} terms`);
-      return result;
-    } catch (err: any) {
-      console.log(`⚠️ Claude API failed (${err.message}) — using local fallback`);
+    // 2. Try Claude API if key provided
+    const key = apiKey || process.env['ANTHROPIC_API_KEY'];
+    if (key) {
+      try {
+        result = await expandWithClaude(clean, key);
+        console.log(`🤖 Claude keyword expansion: ${result.allTerms.length} terms`);
+      } catch (err2: any) {
+        console.log(`⚠️ Claude API failed (${err2.message}) — using local fallback`);
+        result = localExpand(clean);
+        console.log(`📚 Local keyword expansion: ${result.allTerms.length} terms`);
+      }
+    } else {
+      // 3. Local dictionary (always works)
+      result = localExpand(clean);
+      console.log(`📚 Local keyword expansion: ${result.allTerms.length} terms`);
     }
   }
 
-  // 3. Local dictionary (always works)
-  const result = localExpand(clean);
-  console.log(`📚 Local keyword expansion: ${result.allTerms.length} terms`);
-  return result;
+  expansionCache.set(cacheKey, { result: result!, ts: Date.now() });
+  return result!;
 }
 
 export function buildSearchQueries(expanded: ExpandedSearch, maxQueries = 6): string[][] {

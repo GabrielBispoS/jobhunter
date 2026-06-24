@@ -76,6 +76,10 @@ function initSchema(database: SqlJsDatabase): void {
       blacklist_companies TEXT, keywords TEXT, updated_at TEXT
     );
     INSERT OR IGNORE INTO profile (id, updated_at) VALUES (1, datetime('now'));
+    CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_fetched_at ON jobs(fetched_at);
+    CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
   `);
 }
 
@@ -148,11 +152,15 @@ export async function createApplication(app: Omit<Application, 'created_at' | 'u
   });
 }
 
+const ALLOWED_APP_FIELDS = new Set(['status', 'applied_at', 'notes', 'cover_letter', 'response_at', 'response_type']);
+
 export async function updateApplication(id: string, data: Partial<Application>): Promise<void> {
   const database = await getDb();
-  const fields = Object.keys(data).map((k) => `${k} = $${k}`).join(', ');
+  const safeEntries = Object.entries(data).filter(([k]) => ALLOWED_APP_FIELDS.has(k));
+  if (safeEntries.length === 0) return;
+  const fields = safeEntries.map(([k]) => `${k} = $${k}`).join(', ');
   const params: Record<string, any> = { $id: id };
-  for (const [k, v] of Object.entries(data)) params[`$${k}`] = v;
+  for (const [k, v] of safeEntries) params[`$${k}`] = v;
   run(database, `UPDATE applications SET ${fields}, updated_at = datetime('now') WHERE id = $id`, params);
 }
 
@@ -198,17 +206,22 @@ export async function getProfile(): Promise<UserProfile | undefined> {
   } as UserProfile;
 }
 
+const ALLOWED_PROFILE_FIELDS = new Set([
+  'name','email','phone','linkedin','github','portfolio','resume_path','summary',
+  'skills','experience','education','target_roles','target_locations','min_salary',
+  'blacklist_companies','keywords',
+]);
+
+const ARRAY_PROFILE_FIELDS = new Set(['skills','target_roles','target_locations','blacklist_companies','keywords']);
+
 export async function updateProfile(data: Partial<UserProfile>): Promise<void> {
   const database = await getDb();
-  const serialized: Record<string, any> = {
-    ...data,
-    skills:              JSON.stringify(data.skills || []),
-    target_roles:        JSON.stringify(data.target_roles || []),
-    target_locations:    JSON.stringify(data.target_locations || []),
-    blacklist_companies: JSON.stringify(data.blacklist_companies || []),
-    keywords:            JSON.stringify(data.keywords || []),
-    updated_at:          new Date().toISOString(),
-  };
+  const safe = Object.fromEntries(Object.entries(data).filter(([k]) => ALLOWED_PROFILE_FIELDS.has(k))) as Partial<UserProfile>;
+  const serialized: Record<string, any> = { updated_at: new Date().toISOString() };
+  for (const [k, v] of Object.entries(safe)) {
+    serialized[k] = ARRAY_PROFILE_FIELDS.has(k) ? JSON.stringify(Array.isArray(v) ? v : []) : v;
+  }
+  if (Object.keys(serialized).length <= 1) return; // apenas updated_at, nada a salvar
   const fields = Object.keys(serialized).map((k) => `${k} = $${k}`).join(', ');
   const params: Record<string, any> = {};
   for (const [k, v] of Object.entries(serialized)) params[`$${k}`] = v;

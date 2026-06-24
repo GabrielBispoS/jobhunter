@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { v4 as uuid } from 'uuid';
 import { scrapeGupy, scrapeGupyCompany, KNOWN_GUPY_COMPANIES } from '../scrapers/gupy';
 import { scrapeInhire, scrapeInhireCompany, KNOWN_INHIRE_COMPANIES } from '../scrapers/inhire';
@@ -15,6 +16,7 @@ import {
   scrapeJooble, scrapeOtta, scrapeWorkana, scrapeEmpregaBrasil, scrapeTrovit,
 } from '../scrapers/global_playwright';
 import { scrapeGlassdoor, scrapeCatho, scrapeInfoJobs, autoApply } from '../scrapers/playwright';
+import { scrapeLinkedIn } from '../scrapers/linkedin';
 import { gupyEasyApply, parseGupyUrl } from '../scrapers/gupy_apply';
 import {
   upsertJobs, getJobs, getJobById, updateJobStatus,
@@ -29,6 +31,46 @@ import { sendJobAlert, isMailConfigured } from '../mailer';
 import { reloadCronJobs, ensureScheduleTable } from '../cron';
 
 export const router = Router();
+
+// ── Zod schemas ───────────────────────────────────────────────────────────────
+
+const ScrapeBodySchema = z.object({
+  keywords:  z.array(z.string().min(1).max(100)).min(1).max(20),
+  location:  z.string().max(200).optional(),
+  remote_only: z.boolean().optional(),
+  sources:   z.array(z.string().max(50)).max(50).optional(),
+  companies: z.object({
+    gupy:  z.array(z.string().max(100)).optional(),
+    inhire: z.array(z.string().max(100)).optional(),
+    csod:  z.array(z.string().max(100)).optional(),
+  }).optional(),
+  notify:  z.boolean().optional(),
+  apiKey:  z.string().max(500).optional(),
+});
+
+const ApplicationCreateSchema = z.object({
+  job_id:       z.string().uuid(),
+  notes:        z.string().max(5000).optional(),
+  cover_letter: z.string().max(10000).optional(),
+});
+
+const ApplicationUpdateSchema = z.object({
+  status:       z.enum(['pending','applied','interview','offer','rejected','ghosted']).optional(),
+  applied_at:   z.string().datetime({ offset: true }).optional(),
+  notes:        z.string().max(5000).optional(),
+  cover_letter: z.string().max(10000).optional(),
+  response_at:  z.string().datetime({ offset: true }).optional(),
+  response_type: z.string().max(100).optional(),
+});
+
+function validate<T>(schema: z.ZodSchema<T>, data: unknown, res: Response): T | null {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    res.status(400).json({ error: 'Dados inválidos', details: result.error.flatten().fieldErrors });
+    return null;
+  }
+  return result.data;
+}
 
 // ── Meta ──────────────────────────────────────────────────────────────────────
 
@@ -50,7 +92,7 @@ router.post('/expand-keywords', async (req: Request, res: Response) => {
 router.get('/sources', (_req: Request, res: Response) => {
   res.json({
     api: ['gupy','inhire','geekhunter','csod','remoteok','weworkremotely','vagas_br','99jobs'],
-    browser: ['glassdoor','catho','infojobs','programathor','hipsters','apinfo','remotar',
+    browser: ['linkedin','glassdoor','catho','infojobs','programathor','hipsters','apinfo','remotar',
               'trabalha_brasil','wellfound','indeed','dice','builtin','ziprecruiter','monster','revelo',
               'solides','bne','empregos_br','ciee','jooble','otta','workana','sine','trovit'],
     whitelabel: { gupy: KNOWN_GUPY_COMPANIES, inhire: KNOWN_INHIRE_COMPANIES },
@@ -67,11 +109,48 @@ router.get('/mail-status', (_req: Request, res: Response) => {
   res.json({ configured: isMailConfigured() });
 });
 
+// ── Profile filter helper ─────────────────────────────────────────────────────
+
+function applyProfileFilters(jobs: Record<string, any>[], profile: import('../types').UserProfile): Record<string, any>[] {
+  let filtered = jobs;
+
+  if (profile.blacklist_companies?.length) {
+    const blacklist = profile.blacklist_companies.map(c => c.toLowerCase().trim());
+    filtered = filtered.filter(j => !blacklist.includes((j['company'] || '').toLowerCase().trim()));
+  }
+
+  if (profile.target_locations?.length) {
+    const targets = profile.target_locations.map(l => l.toLowerCase().trim());
+    filtered = filtered.filter(j =>
+      j['remote'] === 'remote' ||
+      !j['location'] ||
+      targets.some(l => (j['location'] || '').toLowerCase().includes(l))
+    );
+  }
+
+  if (profile.target_roles?.length) {
+    const roles = profile.target_roles.map(r => r.toLowerCase().trim());
+    filtered = filtered.filter(j =>
+      roles.some(r => (j['title'] || '').toLowerCase().includes(r))
+    );
+  }
+
+  return filtered;
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 router.get('/jobs', async (req: Request, res: Response) => {
   const { source, status, search, limit, offset } = req.query;
-  res.json(await getJobs({ source: source as string|undefined, status: status as string|undefined, search: search as string|undefined, limit: limit ? Number(limit) : 50, offset: offset ? Number(offset) : 0 }));
+  let jobs = await getJobs({ source: source as string|undefined, status: status as string|undefined, search: search as string|undefined, limit: limit ? Number(limit) : 50, offset: offset ? Number(offset) : 0 });
+
+  // Apply profile filters unless explicitly disabled
+  if (req.query['profile_filter'] !== 'false') {
+    const profile = await getProfile();
+    if (profile) jobs = applyProfileFilters(jobs, profile);
+  }
+
+  res.json(jobs);
 });
 
 router.get('/jobs/:id', async (req: Request, res: Response) => {
@@ -119,6 +198,7 @@ const API_SCRAPERS: Record<string, ScraperFn> = {
 };
 
 const BROWSER_SCRAPERS: Record<string, ScraperFn> = {
+  linkedin:       (c) => scrapeLinkedIn(c),
   glassdoor:      (c) => scrapeGlassdoor(c),
   catho:          (c) => scrapeCatho(c),
   infojobs:       (c) => scrapeInfoJobs(c),
@@ -147,12 +227,7 @@ const BROWSER_SCRAPERS: Record<string, ScraperFn> = {
 
 // ── SSE Streaming Scrape ──────────────────────────────────────────────────────
 
-type ScrapeBody = SearchConfig & {
-  apiKey?: string;
-  sources?: string[];
-  companies?: { gupy?: string[]; inhire?: string[]; csod?: string[] };
-  notify?: boolean;
-};
+type ScrapeBody = z.infer<typeof ScrapeBodySchema>;
 
 /**
  * POST /api/scrape/stream
@@ -160,15 +235,15 @@ type ScrapeBody = SearchConfig & {
  *   { type: 'start' | 'progress' | 'done' | 'error', source, count?, total?, errors? }
  */
 router.post('/scrape/stream', async (req: Request, res: Response) => {
-  const config = req.body as ScrapeBody;
-  if (!config.keywords?.length) { res.status(400).json({ error: 'keywords required' }); return; }
+  const config = validate(ScrapeBodySchema, req.body, res);
+  if (!config) return;
 
   // Expand keywords via Claude API before starting scrape
   let expandedSearch;
   try {
     expandedSearch = await expandKeywords(config.keywords, config.apiKey as string | undefined);
   } catch {
-    expandedSearch = { original: config.keywords, expanded: [config.keywords], allTerms: config.keywords, summary: '' };
+    expandedSearch = { original: config.keywords, expanded: [config.keywords], allTerms: config.keywords, summary: '', engine: 'local' as const };
   }
   const searchQueries = buildSearchQueries(expandedSearch);
 
@@ -340,14 +415,16 @@ router.get('/applications', async (req: Request, res: Response) => {
 });
 
 router.post('/applications', async (req: Request, res: Response) => {
-  const { job_id, notes, cover_letter } = req.body as { job_id?: string; notes?: string; cover_letter?: string };
-  if (!job_id) { res.status(400).json({ error: 'job_id required' }); return; }
-  await createApplication({ id: uuid(), job_id, status: 'pending', notes, cover_letter });
+  const body = validate(ApplicationCreateSchema, req.body, res);
+  if (!body) return;
+  await createApplication({ id: uuid(), job_id: body.job_id, status: 'pending', notes: body.notes, cover_letter: body.cover_letter });
   res.json({ ok: true });
 });
 
 router.patch('/applications/:id', async (req: Request, res: Response) => {
-  await updateApplication(req.params['id']!, req.body);
+  const body = validate(ApplicationUpdateSchema, req.body, res);
+  if (!body) return;
+  await updateApplication(req.params['id']!, body);
   res.json({ ok: true });
 });
 

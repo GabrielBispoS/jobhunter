@@ -161,7 +161,7 @@ export async function scrapeInfoJobs(config: SearchConfig): Promise<ScraperResul
 
     for (const item of extracted) {
       if (item.title !== 'N/A' && item.url && !item.url.endsWith('infojobs.com.br/')) {
-        jobs.push({ id: `infojobs-${toB64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, salary: item.salary || undefined, url: item.url, apply_url: item.url, source: 'infojobs' as any, fetched_at: new Date().toISOString(), tags: [] });
+        jobs.push({ id: `infojobs-${toB64id(item.title, item.company)}`, title: item.title, company: item.company, location: item.location || undefined, salary: item.salary || undefined, url: item.url, apply_url: item.url, source: 'infojobs', fetched_at: new Date().toISOString(), tags: [] });
       }
     }
     await ctx.close();
@@ -196,12 +196,17 @@ export async function autoApply(config: ApplyConfig): Promise<ApplyResult> {
     if (config.answers) {
       for (const [q, a] of Object.entries(config.answers)) await fill(page, [q.toLowerCase()], a);
     }
+    const submitBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("Candidatar"), button:has-text("Apply"), button:has-text("Enviar"), button:has-text("Submit")');
+    if (!submitBtn) {
+      const buf = await page.screenshot({ fullPage: false });
+      await ctx.close();
+      return { success: false, message: 'Botão de envio não encontrado. Preencha e envie manualmente.', screenshot: buf.toString('base64') };
+    }
+    await submitBtn.click();
+    await page.waitForTimeout(3000);
     const buf = await page.screenshot({ fullPage: false });
-    const screenshot = buf.toString('base64');
-    const submitBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("Candidatar"), button:has-text("Apply"), button:has-text("Enviar")');
     await ctx.close();
-    if (!submitBtn) return { success: false, message: 'Botão de envio não encontrado.', screenshot };
-    return { success: true, message: 'Formulário preenchido. Pronto para enviar.', screenshot };
+    return { success: true, message: 'Formulário enviado com sucesso.', screenshot: buf.toString('base64') };
   } catch (err: any) {
     const buf = await page.screenshot().catch(() => null);
     await ctx.close();
