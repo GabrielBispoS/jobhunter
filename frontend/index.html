@@ -303,6 +303,9 @@
     .follow-up-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent3); display: inline-block; margin-right: 4px; animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .kanban-card-followup { font-size: 10px; color: var(--accent3); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+    .page-num-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--fg); font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .page-num-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+    .page-num-btn:hover:not(.active) { background: var(--surface3, #2a2a2a); }
   </style>
 </head>
 <body>
@@ -476,6 +479,14 @@
           <thead><tr><th class="checkbox-col"><input type="checkbox" class="row-check" id="header-check" onchange="toggleSelectAll(this.checked)" /></th><th>Vaga / Empresa</th><th>Fonte</th><th>Localização</th><th>Modalidade</th><th>Match IA</th><th>Ações</th></tr></thead>
           <tbody id="jobs-tbody"><tr><td colspan="7" class="loading"><div class="spinner"></div> Carregando...</td></tr></tbody>
         </table>
+      </div>
+      <div id="jobs-pagination" style="display:none;align-items:center;justify-content:space-between;padding:14px 0 4px;gap:12px;flex-wrap:wrap">
+        <span id="jobs-page-info" style="font-size:13px;color:var(--muted)"></span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-ghost" id="jobs-prev-btn" onclick="jobsChangePage(-1)" style="padding:6px 14px;font-size:13px">← Anterior</button>
+          <div id="jobs-page-numbers" style="display:flex;gap:4px"></div>
+          <button class="btn btn-ghost" id="jobs-next-btn" onclick="jobsChangePage(1)" style="padding:6px 14px;font-size:13px">Próxima →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1089,21 +1100,85 @@ async function loadDashboard() {
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
+const JOBS_PER_PAGE = 50;
+let currentJobsPage = 1;
+
 async function loadJobs() {
-  document.getElementById('jobs-tbody').innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div> Carregando...</td></tr>';
+  document.getElementById('jobs-tbody').innerHTML = '<tr><td colspan="7" class="loading"><div class="spinner"></div> Carregando...</td></tr>';
   try {
-    allJobs = await api('/jobs?limit=200');
+    allJobs = await api('/jobs?limit=500');
     if (cvAnalysis) scoreJobs(allJobs);
     filteredJobs = [...allJobs];
-    renderJobsTable('jobs-tbody', filteredJobs, false);
+    currentJobsPage = 1;
+    renderJobsPage();
   } catch {}
+}
+
+function renderJobsPage() {
+  const total = filteredJobs.length;
+  const totalPages = Math.max(1, Math.ceil(total / JOBS_PER_PAGE));
+  currentJobsPage = Math.min(currentJobsPage, totalPages);
+  const start = (currentJobsPage - 1) * JOBS_PER_PAGE;
+  const pageJobs = filteredJobs.slice(start, start + JOBS_PER_PAGE);
+
+  renderJobsTable('jobs-tbody', pageJobs, false);
+
+  const pag = document.getElementById('jobs-pagination');
+  if (!pag) return;
+  if (total <= JOBS_PER_PAGE) { pag.style.display = 'none'; return; }
+  pag.style.display = 'flex';
+
+  document.getElementById('jobs-page-info').textContent =
+    `${start + 1}–${Math.min(start + JOBS_PER_PAGE, total)} de ${total} vagas`;
+  document.getElementById('jobs-prev-btn').disabled = currentJobsPage === 1;
+  document.getElementById('jobs-next-btn').disabled = currentJobsPage === totalPages;
+
+  // Page number buttons (show up to 7 pages around current)
+  const nums = document.getElementById('jobs-page-numbers');
+  nums.innerHTML = '';
+  const range = pageRange(currentJobsPage, totalPages);
+  for (const p of range) {
+    if (p === '…') {
+      const s = document.createElement('span');
+      s.textContent = '…'; s.style.cssText = 'padding:0 4px;color:var(--muted);line-height:32px';
+      nums.appendChild(s);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'page-num-btn' + (p === currentJobsPage ? ' active' : '');
+      btn.textContent = p;
+      btn.onclick = () => { currentJobsPage = p; renderJobsPage(); };
+      nums.appendChild(btn);
+    }
+  }
+}
+
+function pageRange(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, current, current - 1, current + 1]);
+  if (current <= 3) { pages.add(2); pages.add(3); }
+  if (current >= total - 2) { pages.add(total - 1); pages.add(total - 2); }
+  const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('…');
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
+function jobsChangePage(delta) {
+  const total = filteredJobs.length;
+  const totalPages = Math.max(1, Math.ceil(total / JOBS_PER_PAGE));
+  currentJobsPage = Math.max(1, Math.min(totalPages, currentJobsPage + delta));
+  renderJobsPage();
+  document.getElementById('page-jobs')?.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function filterJobs(q) {
   const lower = q.toLowerCase();
   filteredJobs = allJobs.filter(j => (j.title || '').toLowerCase().includes(lower) || (j.company || '').toLowerCase().includes(lower));
   if (onlyHighMatch) filteredJobs = filteredJobs.filter(j => (j._match || 0) >= 70);
-  renderJobsTable('jobs-tbody', filteredJobs, false);
+  currentJobsPage = 1; renderJobsPage();
 }
 
 function filterBySource(src) {
@@ -1112,20 +1187,20 @@ function filterBySource(src) {
   if (clearBtn) clearBtn.style.display = src ? 'flex' : 'none';
   filteredJobs = src ? allJobs.filter(j => j.source === src) : [...allJobs];
   if (onlyHighMatch) filteredJobs = filteredJobs.filter(j => (j._match || 0) >= 70);
-  renderJobsTable('jobs-tbody', filteredJobs, false);
+  currentJobsPage = 1; renderJobsPage();
 }
 
 function filterByStatus(status) {
   filteredJobs = status ? allJobs.filter(j => j.status === status) : [...allJobs];
   if (onlyHighMatch) filteredJobs = filteredJobs.filter(j => (j._match || 0) >= 70);
-  renderJobsTable('jobs-tbody', filteredJobs, false);
+  currentJobsPage = 1; renderJobsPage();
 }
 
 function toggleMatchFilter() {
   onlyHighMatch = !onlyHighMatch;
   document.getElementById('match-toggle').classList.toggle('active', onlyHighMatch);
   filteredJobs = onlyHighMatch ? allJobs.filter(j => (j._match || 0) >= 70) : [...allJobs];
-  renderJobsTable('jobs-tbody', filteredJobs, false);
+  currentJobsPage = 1; renderJobsPage();
 }
 
 // ── Match scoring ─────────────────────────────────────────────────────────────
@@ -1758,7 +1833,7 @@ async function clearAllJobs() {
     const result = await api('/jobs/all', { method: 'DELETE', body: '{}' });
     toast('🗑 ' + result.deleted + ' vagas removidas.', 'success');
     allJobs = []; filteredJobs = [];
-    renderJobsTable('jobs-tbody', [], false);
+    currentJobsPage = 1; renderJobsPage();
     loadDashboard();
   } catch {}
 }
@@ -1988,7 +2063,7 @@ function applyLocalFilters() {
     if (onlyHighMatch && (j._match || 0) < 70) return false;
     return true;
   });
-  renderJobsTable('jobs-tbody', filteredJobs, false);
+  currentJobsPage = 1; renderJobsPage();
 }
 
 // ── Company Insights ──────────────────────────────────────────────────────────
