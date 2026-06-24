@@ -125,17 +125,13 @@ function applyProfileFilters(jobs: Record<string, any>[], profile: import('../ty
 
   if (profile.target_locations?.length) {
     const targets = profile.target_locations.map(l => l.toLowerCase().trim());
+    const hasRemoteTarget = targets.some(l => ['remoto', 'remote', 'anywhere'].includes(l));
     filtered = filtered.filter(j =>
       j['remote'] === 'remote' ||
       !j['location'] ||
-      targets.some(l => (j['location'] || '').toLowerCase().includes(l))
-    );
-  }
-
-  if (profile.target_roles?.length) {
-    const roles = profile.target_roles.map(r => r.toLowerCase().trim());
-    filtered = filtered.filter(j =>
-      roles.some(r => (j['title'] || '').toLowerCase().includes(r))
+      (j['location'] as string).toLowerCase() === 'anywhere in the world' ||
+      targets.some(l => (j['location'] || '').toLowerCase().includes(l)) ||
+      hasRemoteTarget
     );
   }
 
