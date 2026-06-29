@@ -1459,12 +1459,18 @@ function showCvResult(data) {
   if (data.roles?.length) document.getElementById('search-keywords').value = data.roles.slice(0,2).join(', ');
 }
 
-function applyProfileFromCv() {
+async function applyProfileFromCv() {
   if (!cvAnalysis) return;
-  tagState.skills = cvAnalysis.skills || [];
-  tagState.target_roles = cvAnalysis.roles || [];
-  renderTags('skills', 'skills-wrap');
-  renderTags('target_roles', 'target-roles-wrap');
+  const current = profile || {};
+  const updated = {
+    ...current,
+    name: current.name || cvAnalysis.nome || '',
+    summary: current.summary || cvAnalysis.resumo_ia || '',
+    skills: cvAnalysis.skills || [],
+    target_roles: cvAnalysis.roles || [],
+    keywords: cvAnalysis.keywords || [],
+  };
+  await api('/profile', { method: 'PUT', body: JSON.stringify(updated) });
   showPage('profile');
   toast('✅ Perfil preenchido com dados do CV!', 'success');
 }
@@ -1650,9 +1656,11 @@ async function runScrape() {
   });
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (_authToken) headers['Authorization'] = 'Bearer ' + _authToken;
     const resp = await fetch(API + '/scrape/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body,
     });
 
