@@ -21,6 +21,7 @@ interface ScheduleConfig {
   schedule: string;      // cron expression
   active: number;        // 0|1
   notify_email: number;  // 0|1
+  user_id: string;
 }
 
 // Lazy import scrapers to avoid circular deps
@@ -94,8 +95,8 @@ async function executeSchedule(cfg: ScheduleConfig): Promise<void> {
   };
 
   try {
-    // Get existing fingerprints to detect NEW jobs
-    const existingRows = all(db, 'SELECT title, company FROM jobs');
+    // Get existing fingerprints for this user to detect NEW jobs
+    const existingRows = all(db, 'SELECT title, company FROM jobs WHERE user_id = $uid', { $uid: cfg.user_id });
     const existingFps = new Set(
       existingRows.map(r => fingerprint({ title: r['title'] as string, company: r['company'] as string } as Job))
     );
@@ -104,9 +105,8 @@ async function executeSchedule(cfg: ScheduleConfig): Promise<void> {
     const newJobs = deduplicateJobs(scrapedJobs, existingFps);
 
     if (newJobs.length > 0) {
-      // Save to DB
       const { upsertJobs } = await import('./db');
-      await upsertJobs(newJobs);
+      await upsertJobs(cfg.user_id, newJobs);
 
       console.log(`✅ Cron [${cfg.name}] — ${newJobs.length} new jobs saved`);
 
@@ -183,6 +183,7 @@ export async function startCronJobs(): Promise<void> {
       id: 'env-default', name: 'Default (env)', active: 1,
       keywords: JSON.stringify(keywords), sources: JSON.stringify(sources),
       schedule: defaultCron, remote_only: 0, notify_email: 1,
+      user_id: 'default',
     };
     const task = cron.schedule(defaultCron, () => executeSchedule(fakeCfg), { timezone: 'America/Sao_Paulo' });
     activeTasks.set('env-default', task);
@@ -209,9 +210,11 @@ function ensureScheduleTable(db: any): void {
       active INTEGER DEFAULT 1,
       notify_email INTEGER DEFAULT 1,
       last_run TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      user_id TEXT NOT NULL DEFAULT 'default'
     )
   `);
+  try { db.run("ALTER TABLE search_schedules ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'"); } catch { /* already exists */ }
 }
 
 // Export for route use

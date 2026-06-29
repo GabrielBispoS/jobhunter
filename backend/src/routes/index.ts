@@ -177,16 +177,16 @@ router.patch('/jobs/:id/status', async (req: Request, res: Response) => {
 router.delete('/jobs/source/:source', async (req: Request, res: Response) => {
   const db = await getDb();
   const source = req.params['source']!;
-  const before = (get(db, 'SELECT COUNT(*) as n FROM jobs WHERE source = $s', { $s: source }) as any)?.n ?? 0;
-  dbRun(db, 'DELETE FROM jobs WHERE source = $s', { $s: source });
+  const before = (get(db, 'SELECT COUNT(*) as n FROM jobs WHERE source = $s AND user_id = $uid', { $s: source, $uid: req.userId }) as any)?.n ?? 0;
+  dbRun(db, 'DELETE FROM jobs WHERE source = $s AND user_id = $uid', { $s: source, $uid: req.userId });
   res.json({ ok: true, deleted: before });
 });
 
-// Delete ALL jobs (nuclear option — fresh start)
+// Delete ALL jobs for this user
 router.delete('/jobs/all', async (req: Request, res: Response) => {
   const db = await getDb();
-  const before = (get(db, 'SELECT COUNT(*) as n FROM jobs') as any)?.n ?? 0;
-  dbRun(db, 'DELETE FROM jobs');
+  const before = (get(db, 'SELECT COUNT(*) as n FROM jobs WHERE user_id = $uid', { $uid: req.userId }) as any)?.n ?? 0;
+  dbRun(db, 'DELETE FROM jobs WHERE user_id = $uid', { $uid: req.userId });
   res.json({ ok: true, deleted: before });
 });
 
@@ -200,7 +200,7 @@ router.patch('/jobs/bulk-status', async (req: Request, res: Response) => {
   if (!allowed.has(status)) { res.status(400).json({ error: 'status inválido' }); return; }
   const db = await getDb();
   for (const id of ids.slice(0, 200)) {
-    dbRun(db, 'UPDATE jobs SET status = $s WHERE id = $id', { $s: status, $id: id });
+    dbRun(db, 'UPDATE jobs SET status = $s WHERE id = $id AND user_id = $uid', { $s: status, $id: id, $uid: req.userId });
   }
   res.json({ ok: true, updated: ids.length });
 });
@@ -321,9 +321,9 @@ router.post('/scrape/stream', async (req: Request, res: Response) => {
     queries: searchQueries,
   });
 
-  // Load existing fingerprints once for deduplication
+  // Load existing fingerprints for this user only
   const db = await getDb();
-  const existingRows = all(db, 'SELECT title, company FROM jobs');
+  const existingRows = all(db, 'SELECT title, company FROM jobs WHERE user_id = $uid', { $uid: req.userId });
   const existingFps = new Set(existingRows.map(r => fingerprint({ title: r['title'] as string, company: r['company'] as string } as Job)));
 
   let grandTotal = 0;
@@ -373,7 +373,7 @@ router.post('/scrape/stream', async (req: Request, res: Response) => {
       // Add new fingerprints so subsequent scrapers benefit too
       deduped.forEach(j => existingFps.add(fingerprint(j)));
 
-      if (deduped.length > 0) await upsertJobs(deduped);
+      if (deduped.length > 0) await upsertJobs(req.userId, deduped);
 
       grandTotal += result.jobs.length;
       grandNew += deduped.length;
@@ -417,7 +417,7 @@ router.post('/scrape', async (req: Request, res: Response) => {
 
   const sources = config.sources || ['gupy', 'inhire', 'remoteok'];
   const db = await getDb();
-  const existingRows = all(db, 'SELECT title, company FROM jobs');
+  const existingRows = all(db, 'SELECT title, company FROM jobs WHERE user_id = $uid', { $uid: req.userId });
   const existingFps = new Set(existingRows.map(r => fingerprint({ title: r['title'] as string, company: r['company'] as string } as Job)));
   const results: Record<string, any> = {};
 
@@ -427,7 +427,7 @@ router.post('/scrape', async (req: Request, res: Response) => {
       const r = wrap ? await browserSemaphore.run(doRun) : await doRun();
       const deduped = deduplicateJobs(r.jobs, existingFps);
       deduped.forEach(j => existingFps.add(fingerprint(j)));
-      if (deduped.length) await upsertJobs(deduped);
+      if (deduped.length) await upsertJobs(req.userId, deduped);
       results[key] = { count: deduped.length, raw: r.jobs.length, errors: r.errors, duration_ms: r.duration_ms };
     } catch (err: any) {
       results[key] = { count: 0, errors: [err.message] };
@@ -563,8 +563,8 @@ router.post('/schedules', async (req: Request, res: Response) => {
   }
   const id = uuid();
   dbRun(db, `
-    INSERT INTO search_schedules (id, name, keywords, location, remote_only, sources, schedule, active, notify_email)
-    VALUES ($id,$name,$keywords,$location,$remote_only,$sources,$schedule,1,$notify_email)
+    INSERT INTO search_schedules (id, name, keywords, location, remote_only, sources, schedule, active, notify_email, user_id)
+    VALUES ($id,$name,$keywords,$location,$remote_only,$sources,$schedule,1,$notify_email,$user_id)
   `, {
     $id: id, $name: name,
     $keywords: JSON.stringify(Array.isArray(keywords) ? keywords : [keywords]),
@@ -573,6 +573,7 @@ router.post('/schedules', async (req: Request, res: Response) => {
     $sources: JSON.stringify(sources || ['gupy','inhire','remoteok']),
     $schedule: schedule,
     $notify_email: notify_email ? 1 : 0,
+    $user_id: req.userId,
   });
   await reloadCronJobs();
   res.json({ ok: true, id });

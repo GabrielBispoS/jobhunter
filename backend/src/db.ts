@@ -98,6 +98,7 @@ function runMigrations(database: SqlJsDatabase): void {
     'ALTER TABLE applications ADD COLUMN follow_up_at TEXT',
     'ALTER TABLE applications ADD COLUMN follow_up_sent INTEGER DEFAULT 0',
     'ALTER TABLE applications ADD COLUMN user_id TEXT DEFAULT \'default\'',
+    'ALTER TABLE jobs ADD COLUMN user_id TEXT DEFAULT \'default\'',
     // Copy legacy single-user profile to user_profiles as 'default' user
     `INSERT OR IGNORE INTO user_profiles
        SELECT 'default', name, email, phone, linkedin, github, portfolio,
@@ -113,22 +114,23 @@ function runMigrations(database: SqlJsDatabase): void {
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
-export async function upsertJobs(jobs: Job[]): Promise<void> {
+export async function upsertJobs(userId: string, jobs: Job[]): Promise<void> {
   const database = await getDb();
   const sql = `
     INSERT OR REPLACE INTO jobs
-      (id, title, company, location, remote, salary, salary_min, salary_max,
+      (id, user_id, title, company, location, remote, salary, salary_min, salary_max,
        language, description, requirements, url, apply_url, source,
        posted_at, fetched_at, tags, status)
     VALUES
-      ($id,$title,$company,$location,$remote,$salary,$salary_min,$salary_max,
+      ($id,$user_id,$title,$company,$location,$remote,$salary,$salary_min,$salary_max,
        $language,$description,$requirements,$url,$apply_url,$source,
        $posted_at,$fetched_at,$tags,$status)
   `;
   database.run('BEGIN');
   for (const job of jobs) {
     database.run(sql, {
-      $id: job.id, $title: job.title, $company: job.company,
+      $id: `${userId}:${job.id}`, $user_id: userId,
+      $title: job.title, $company: job.company,
       $location: job.location ?? null, $remote: job.remote ?? null,
       $salary: job.salary ?? null,
       $salary_min: job.salary_min ?? null,
@@ -153,7 +155,8 @@ export async function getJobs(userId: string, filters: {
 } = {}): Promise<Record<string, any>[]> {
   const database = await getDb();
   let sql = `SELECT j.*, a.status as app_status, a.id as app_id
-    FROM jobs j LEFT JOIN applications a ON j.id = a.job_id AND a.user_id = $userId WHERE 1=1`;
+    FROM jobs j LEFT JOIN applications a ON j.id = a.job_id AND a.user_id = $userId
+    WHERE j.user_id = $userId`;
   const params: Record<string, any> = { $userId: userId };
   if (filters.source) { sql += ' AND j.source = $source'; params['$source'] = filters.source; }
   if (filters.status) { sql += ' AND j.status = $status'; params['$status'] = filters.status; }
@@ -223,7 +226,7 @@ export async function getStats(userId: string): Promise<object> {
   const database = await getDb();
   const count = (sql: string, params?: Record<string, any>) => (get(database, sql, params) as any)?.n ?? 0;
   return {
-    total_jobs:         count('SELECT COUNT(*) as n FROM jobs'),
+    total_jobs:         count('SELECT COUNT(*) as n FROM jobs WHERE user_id = $uid', { $uid: userId }),
     total_applications: count('SELECT COUNT(*) as n FROM applications WHERE user_id = $uid', { $uid: userId }),
     pending:   count("SELECT COUNT(*) as n FROM applications WHERE status='pending' AND user_id = $uid", { $uid: userId }),
     applied:   count("SELECT COUNT(*) as n FROM applications WHERE status='applied' AND user_id = $uid", { $uid: userId }),
@@ -231,7 +234,7 @@ export async function getStats(userId: string): Promise<object> {
     rejected:  count("SELECT COUNT(*) as n FROM applications WHERE status='rejected' AND user_id = $uid", { $uid: userId }),
     offer:     count("SELECT COUNT(*) as n FROM applications WHERE status='offer' AND user_id = $uid", { $uid: userId }),
     ghosted:   count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted' AND user_id = $uid", { $uid: userId }),
-    by_source: all(database, 'SELECT source, COUNT(*) as n FROM jobs GROUP BY source'),
+    by_source: all(database, 'SELECT source, COUNT(*) as n FROM jobs WHERE user_id = $uid GROUP BY source', { $uid: userId }),
   };
 }
 
