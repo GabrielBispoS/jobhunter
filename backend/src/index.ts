@@ -6,7 +6,7 @@ import 'dotenv/config';
 import { router } from './routes';
 import { getDb } from './db';
 import { startCronJobs } from './cron';
-import { authMiddleware, validatePassword, signToken, isAuthEnabled } from './auth';
+import { authMiddleware, resolveUser, signToken, isAuthEnabled } from './auth';
 
 const app = express();
 const PORT = process.env['PORT'] || 3001;
@@ -82,11 +82,12 @@ app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), (req: Request, res: R
     res.status(400).json({ error: 'Senha obrigatória.' });
     return;
   }
-  if (!validatePassword(password)) {
+  const userId = resolveUser(password);
+  if (!userId) {
     res.status(401).json({ error: 'Senha incorreta.' });
     return;
   }
-  res.json({ token: signToken() });
+  res.json({ token: signToken(userId) });
 });
 
 // ── Protected API routes ──────────────────────────────────────────────────────

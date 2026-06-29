@@ -76,8 +76,8 @@ function validate<T>(schema: z.ZodSchema<T>, data: unknown, res: Response): T | 
 
 // ── Meta ──────────────────────────────────────────────────────────────────────
 
-router.get('/stats', async (_req: Request, res: Response) => { res.json(await getStats()); });
-router.get('/stats/applications', async (_req: Request, res: Response) => { res.json(await getApplicationStats()); });
+router.get('/stats', async (req: Request, res: Response) => { res.json(await getStats(req.userId)); });
+router.get('/stats/applications', async (req: Request, res: Response) => { res.json(await getApplicationStats(req.userId)); });
 
 // Expand keywords using local dictionary or Ollama/Claude (server-side key only)
 router.post('/expand-keywords', async (req: Request, res: Response) => {
@@ -141,7 +141,7 @@ function applyProfileFilters(jobs: Record<string, any>[], profile: import('../ty
 
 router.get('/jobs', async (req: Request, res: Response) => {
   const { source, status, search, limit, offset, salary_min, remote, language } = req.query;
-  let jobs = await getJobs({
+  let jobs = await getJobs(req.userId, {
     source: source as string|undefined,
     status: status as string|undefined,
     search: search as string|undefined,
@@ -152,9 +152,8 @@ router.get('/jobs', async (req: Request, res: Response) => {
     language: language as string|undefined,
   });
 
-  // Apply profile filters unless explicitly disabled
   if (req.query['profile_filter'] !== 'false') {
-    const profile = await getProfile();
+    const profile = await getProfile(req.userId);
     if (profile) jobs = applyProfileFilters(jobs, profile);
   }
 
@@ -208,7 +207,7 @@ router.patch('/jobs/bulk-status', async (req: Request, res: Response) => {
 
 // Export endpoints
 router.get('/export/jobs', async (req: Request, res: Response) => {
-  const jobs = await getJobs({ limit: 5000 });
+  const jobs = await getJobs(req.userId, { limit: 5000 });
   const headers = ['id','title','company','location','remote','salary','source','language','status','url','fetched_at'];
   const rows = jobs.map(j => headers.map(h => JSON.stringify(String(j[h] ?? ''))).join(','));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -217,7 +216,7 @@ router.get('/export/jobs', async (req: Request, res: Response) => {
 });
 
 router.get('/export/applications', async (req: Request, res: Response) => {
-  const apps = await getApplications({ limit: 5000 });
+  const apps = await getApplications(req.userId, { limit: 5000 });
   const headers = ['id','title','company','status','applied_at','response_at','notes','url'];
   const rows = apps.map(a => headers.map(h => JSON.stringify(String(a[h] ?? ''))).join(','));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -453,28 +452,28 @@ router.post('/scrape', async (req: Request, res: Response) => {
 // ── Applications ──────────────────────────────────────────────────────────────
 
 router.get('/applications', async (req: Request, res: Response) => {
-  res.json(await getApplications({ status: req.query['status'] as string|undefined }));
+  res.json(await getApplications(req.userId, { status: req.query['status'] as string|undefined }));
 });
 
 router.post('/applications', async (req: Request, res: Response) => {
   const body = validate(ApplicationCreateSchema, req.body, res);
   if (!body) return;
   const followUp = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  await createApplication({ id: uuid(), job_id: body.job_id, status: 'pending', notes: body.notes, cover_letter: body.cover_letter, follow_up_at: followUp });
+  await createApplication(req.userId, { id: uuid(), job_id: body.job_id, status: 'pending', notes: body.notes, cover_letter: body.cover_letter, follow_up_at: followUp });
   res.json({ ok: true });
 });
 
 router.patch('/applications/:id', async (req: Request, res: Response) => {
   const body = validate(ApplicationUpdateSchema, req.body, res);
   if (!body) return;
-  await updateApplication(req.params['id']!, body);
+  await updateApplication(req.userId, req.params['id']!, body);
   res.json({ ok: true });
 });
 
 router.post('/apply/:jobId', async (req: Request, res: Response) => {
   const job = await getJobById(req.params['jobId']!) as any;
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
-  const profile = await getProfile();
+  const profile = await getProfile(req.userId);
   if (!profile?.email || !profile?.name) {
     res.status(400).json({ error: 'Complete seu perfil (nome + email) antes de candidatar-se' }); return;
   }
@@ -500,7 +499,7 @@ router.post('/apply/:jobId', async (req: Request, res: Response) => {
 
         if (result.success && result.method === 'easy_apply') {
           const followUp = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-          await createApplication({
+          await createApplication(req.userId, {
             id: uuid(), job_id: job.id, status: 'applied',
             applied_at: new Date().toISOString(),
             notes: `Gupy Easy Apply${result.application_id ? ' · ID: ' + result.application_id : ''}`,
@@ -533,7 +532,7 @@ router.post('/apply/:jobId', async (req: Request, res: Response) => {
 
     if (result.success) {
       const followUp = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      await createApplication({
+      await createApplication(req.userId, {
         id: uuid(), job_id: job.id, status: 'applied',
         applied_at: new Date().toISOString(),
         notes: 'Auto-applied via Playwright',
@@ -609,8 +608,8 @@ router.post('/schedules/:id/run', async (req: Request, res: Response) => {
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
-router.get('/profile', async (_req: Request, res: Response) => { res.json((await getProfile()) || {}); });
-router.put('/profile', async (req: Request, res: Response) => { await updateProfile(req.body); res.json({ ok: true }); });
+router.get('/profile', async (req: Request, res: Response) => { res.json((await getProfile(req.userId)) || {}); });
+router.put('/profile', async (req: Request, res: Response) => { await updateProfile(req.userId, req.body); res.json({ ok: true }); });
 
 // Helper for cron.ts
 function get(db: any, sql: string, params: Record<string, any> = {}): Record<string, any> | undefined {

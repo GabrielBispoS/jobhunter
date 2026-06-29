@@ -20,7 +20,7 @@ export const optimizerRouter = Router();
 optimizerRouter.get('/jobs/:id/ats', async (req: Request, res: Response) => {
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
-  const profile = await getProfile();
+  const profile = await getProfile(req.userId);
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de analisar' }); return; }
   try {
     res.json(analyzeAts(job, profile));
@@ -33,7 +33,7 @@ optimizerRouter.post('/jobs/:id/cover-letter', async (req: Request, res: Respons
   if (!requireGeminiKey(res)) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
-  const profile = await getProfile();
+  const profile = await getProfile(req.userId);
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de gerar carta' }); return; }
   try {
     res.json({ cover_letter: await generateCoverLetter(job, profile) });
@@ -57,7 +57,7 @@ optimizerRouter.post('/jobs/:id/interview-questions', async (req: Request, res: 
   if (!requireGeminiKey(res)) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
-  const profile = await getProfile();
+  const profile = await getProfile(req.userId);
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de gerar perguntas' }); return; }
   try {
     res.json({ questions: await generateInterviewQuestions(job, profile) });
@@ -70,7 +70,7 @@ optimizerRouter.post('/jobs/:id/tailor-cv', async (req: Request, res: Response) 
   if (!requireGeminiKey(res)) return;
   const job = await getJobById(req.params['id']!);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
-  const profile = await getProfile();
+  const profile = await getProfile(req.userId);
   if (!profile) { res.status(400).json({ error: 'Configure seu perfil antes de adaptar CV' }); return; }
   try {
     res.json(await tailorCv(job, profile));

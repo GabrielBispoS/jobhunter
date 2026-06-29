@@ -7,7 +7,6 @@ const DB_PATH = process.env['DB_PATH'] || path.join(__dirname, '../../data/jobhu
 
 let db: SqlJsDatabase | null = null;
 
-// Persist db to disk after every write
 export function save(): void {
   if (!db) return;
   const data = db.export();
@@ -30,13 +29,11 @@ export async function getDb(): Promise<SqlJsDatabase> {
   return db;
 }
 
-// Helper: run a statement with named params
 export function run(database: SqlJsDatabase, sql: string, params: Record<string, any> = {}): void {
   database.run(sql, params);
   save();
 }
 
-// Helper: query rows
 export function all(database: SqlJsDatabase, sql: string, params: Record<string, any> = {}): Record<string, any>[] {
   const stmt = database.prepare(sql);
   stmt.bind(params);
@@ -46,7 +43,6 @@ export function all(database: SqlJsDatabase, sql: string, params: Record<string,
   return rows;
 }
 
-// Helper: get one row
 export function get(database: SqlJsDatabase, sql: string, params: Record<string, any> = {}): Record<string, any> | undefined {
   const rows = all(database, sql, params);
   return rows[0];
@@ -78,6 +74,14 @@ function initSchema(database: SqlJsDatabase): void {
       blacklist_companies TEXT, keywords TEXT, updated_at TEXT
     );
     INSERT OR IGNORE INTO profile (id, updated_at) VALUES (1, datetime('now'));
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id TEXT PRIMARY KEY,
+      name TEXT, email TEXT, phone TEXT, linkedin TEXT, github TEXT,
+      portfolio TEXT, resume_path TEXT, summary TEXT, skills TEXT,
+      experience TEXT, education TEXT, target_roles TEXT,
+      target_locations TEXT, min_salary INTEGER,
+      blacklist_companies TEXT, keywords TEXT, updated_at TEXT
+    );
     CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
     CREATE INDEX IF NOT EXISTS idx_jobs_fetched_at ON jobs(fetched_at);
@@ -93,9 +97,17 @@ function runMigrations(database: SqlJsDatabase): void {
     'ALTER TABLE jobs ADD COLUMN salary_max INTEGER',
     'ALTER TABLE applications ADD COLUMN follow_up_at TEXT',
     'ALTER TABLE applications ADD COLUMN follow_up_sent INTEGER DEFAULT 0',
+    'ALTER TABLE applications ADD COLUMN user_id TEXT DEFAULT \'default\'',
+    // Copy legacy single-user profile to user_profiles as 'default' user
+    `INSERT OR IGNORE INTO user_profiles
+       SELECT 'default', name, email, phone, linkedin, github, portfolio,
+              resume_path, summary, skills, experience, education,
+              target_roles, target_locations, min_salary,
+              blacklist_companies, keywords, updated_at
+       FROM profile WHERE id = 1`,
   ];
   for (const sql of migrations) {
-    try { database.run(sql); } catch { /* column already exists */ }
+    try { database.run(sql); } catch { /* already applied */ }
   }
 }
 
@@ -113,7 +125,6 @@ export async function upsertJobs(jobs: Job[]): Promise<void> {
        $language,$description,$requirements,$url,$apply_url,$source,
        $posted_at,$fetched_at,$tags,$status)
   `;
-  // Run all inserts in a single transaction, then save once
   database.run('BEGIN');
   for (const job of jobs) {
     database.run(sql, {
@@ -133,17 +144,17 @@ export async function upsertJobs(jobs: Job[]): Promise<void> {
     });
   }
   database.run('COMMIT');
-  save(); // single disk write for the whole batch
+  save();
 }
 
-export async function getJobs(filters: {
+export async function getJobs(userId: string, filters: {
   source?: string; status?: string; search?: string; limit?: number; offset?: number;
   salary_min?: number; remote?: string; language?: string;
 } = {}): Promise<Record<string, any>[]> {
   const database = await getDb();
   let sql = `SELECT j.*, a.status as app_status, a.id as app_id
-    FROM jobs j LEFT JOIN applications a ON j.id = a.job_id WHERE 1=1`;
-  const params: Record<string, any> = {};
+    FROM jobs j LEFT JOIN applications a ON j.id = a.job_id AND a.user_id = $userId WHERE 1=1`;
+  const params: Record<string, any> = { $userId: userId };
   if (filters.source) { sql += ' AND j.source = $source'; params['$source'] = filters.source; }
   if (filters.status) { sql += ' AND j.status = $status'; params['$status'] = filters.status; }
   if (filters.search) { sql += ' AND (j.title LIKE $search OR j.company LIKE $search)'; params['$search'] = `%${filters.search}%`; }
@@ -168,85 +179,88 @@ export async function updateJobStatus(id: string, status: string): Promise<void>
 
 // ── Applications ──────────────────────────────────────────────────────────────
 
-export async function createApplication(app: Omit<Application, 'created_at' | 'updated_at'>): Promise<void> {
+export async function createApplication(userId: string, app: Omit<Application, 'created_at' | 'updated_at'>): Promise<void> {
   const database = await getDb();
   const now = new Date().toISOString();
   run(database, `
     INSERT OR REPLACE INTO applications
-      (id, job_id, status, applied_at, notes, cover_letter, created_at, updated_at)
-    VALUES ($id,$job_id,$status,$applied_at,$notes,$cover_letter,$created_at,$updated_at)
+      (id, job_id, status, applied_at, notes, cover_letter, follow_up_at, created_at, updated_at, user_id)
+    VALUES ($id,$job_id,$status,$applied_at,$notes,$cover_letter,$follow_up_at,$created_at,$updated_at,$user_id)
   `, {
     $id: app.id, $job_id: app.job_id, $status: app.status,
     $applied_at: app.applied_at ?? null, $notes: app.notes ?? null,
     $cover_letter: app.cover_letter ?? null,
+    $follow_up_at: app.follow_up_at ?? null,
     $created_at: now, $updated_at: now,
+    $user_id: userId,
   });
 }
 
 const ALLOWED_APP_FIELDS = new Set(['status', 'applied_at', 'notes', 'cover_letter', 'response_at', 'response_type', 'follow_up_at', 'follow_up_sent']);
 
-export async function updateApplication(id: string, data: Partial<Application>): Promise<void> {
+export async function updateApplication(userId: string, id: string, data: Partial<Application>): Promise<void> {
   const database = await getDb();
   const safeEntries = Object.entries(data).filter(([k]) => ALLOWED_APP_FIELDS.has(k));
   if (safeEntries.length === 0) return;
   const fields = safeEntries.map(([k]) => `${k} = $${k}`).join(', ');
-  const params: Record<string, any> = { $id: id };
+  const params: Record<string, any> = { $id: id, $user_id: userId };
   for (const [k, v] of safeEntries) params[`$${k}`] = v;
-  run(database, `UPDATE applications SET ${fields}, updated_at = datetime('now') WHERE id = $id`, params);
+  run(database, `UPDATE applications SET ${fields}, updated_at = datetime('now') WHERE id = $id AND user_id = $user_id`, params);
 }
 
-export async function getApplications(filters: { status?: string; limit?: number } = {}): Promise<Record<string, any>[]> {
+export async function getApplications(userId: string, filters: { status?: string; limit?: number } = {}): Promise<Record<string, any>[]> {
   const database = await getDb();
   let sql = `SELECT a.*, j.title, j.company, j.location, j.source, j.url
-    FROM applications a JOIN jobs j ON a.job_id = j.id WHERE 1=1`;
-  const params: Record<string, any> = {};
+    FROM applications a JOIN jobs j ON a.job_id = j.id WHERE a.user_id = $user_id`;
+  const params: Record<string, any> = { $user_id: userId };
   if (filters.status) { sql += ' AND a.status = $status'; params['$status'] = filters.status; }
   sql += ' ORDER BY a.created_at DESC LIMIT $limit';
   params['$limit'] = filters.limit || 100;
   return all(database, sql, params);
 }
 
-export async function getStats(): Promise<object> {
+export async function getStats(userId: string): Promise<object> {
   const database = await getDb();
-  const count = (sql: string) => (get(database, sql) as any)?.n ?? 0;
+  const count = (sql: string, params?: Record<string, any>) => (get(database, sql, params) as any)?.n ?? 0;
   return {
     total_jobs:         count('SELECT COUNT(*) as n FROM jobs'),
-    total_applications: count('SELECT COUNT(*) as n FROM applications'),
-    pending:   count("SELECT COUNT(*) as n FROM applications WHERE status='pending'"),
-    applied:   count("SELECT COUNT(*) as n FROM applications WHERE status='applied'"),
-    interview: count("SELECT COUNT(*) as n FROM applications WHERE status='interview'"),
-    rejected:  count("SELECT COUNT(*) as n FROM applications WHERE status='rejected'"),
-    offer:     count("SELECT COUNT(*) as n FROM applications WHERE status='offer'"),
-    ghosted:   count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted'"),
+    total_applications: count('SELECT COUNT(*) as n FROM applications WHERE user_id = $uid', { $uid: userId }),
+    pending:   count("SELECT COUNT(*) as n FROM applications WHERE status='pending' AND user_id = $uid", { $uid: userId }),
+    applied:   count("SELECT COUNT(*) as n FROM applications WHERE status='applied' AND user_id = $uid", { $uid: userId }),
+    interview: count("SELECT COUNT(*) as n FROM applications WHERE status='interview' AND user_id = $uid", { $uid: userId }),
+    rejected:  count("SELECT COUNT(*) as n FROM applications WHERE status='rejected' AND user_id = $uid", { $uid: userId }),
+    offer:     count("SELECT COUNT(*) as n FROM applications WHERE status='offer' AND user_id = $uid", { $uid: userId }),
+    ghosted:   count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted' AND user_id = $uid", { $uid: userId }),
     by_source: all(database, 'SELECT source, COUNT(*) as n FROM jobs GROUP BY source'),
   };
 }
 
-export async function getApplicationStats(): Promise<object> {
+export async function getApplicationStats(userId: string): Promise<object> {
   const database = await getDb();
   const count = (sql: string, params?: Record<string,any>) => (get(database, sql, params) as any)?.n ?? 0;
   const val   = (sql: string, params?: Record<string,any>) => (get(database, sql, params) as any)?.v ?? null;
 
-  const applied   = count("SELECT COUNT(*) as n FROM applications WHERE status IN ('applied','interview','offer','rejected','ghosted')");
-  const responded = count("SELECT COUNT(*) as n FROM applications WHERE response_at IS NOT NULL");
-  const interview = count("SELECT COUNT(*) as n FROM applications WHERE status='interview'");
-  const offer     = count("SELECT COUNT(*) as n FROM applications WHERE status='offer'");
-  const ghosted   = count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted'");
+  const p = { $uid: userId };
+  const applied   = count("SELECT COUNT(*) as n FROM applications WHERE status IN ('applied','interview','offer','rejected','ghosted') AND user_id = $uid", p);
+  const responded = count("SELECT COUNT(*) as n FROM applications WHERE response_at IS NOT NULL AND user_id = $uid", p);
+  const interview = count("SELECT COUNT(*) as n FROM applications WHERE status='interview' AND user_id = $uid", p);
+  const offer     = count("SELECT COUNT(*) as n FROM applications WHERE status='offer' AND user_id = $uid", p);
+  const ghosted   = count("SELECT COUNT(*) as n FROM applications WHERE status='ghosted' AND user_id = $uid", p);
 
   const avgDaysToResponse = val(`
     SELECT ROUND(AVG((julianday(response_at) - julianday(applied_at))), 1) as v
-    FROM applications WHERE response_at IS NOT NULL AND applied_at IS NOT NULL
-  `);
+    FROM applications WHERE response_at IS NOT NULL AND applied_at IS NOT NULL AND user_id = $uid
+  `, p);
 
   const byWeek = all(database, `
     SELECT strftime('%Y-W%W', applied_at) as week, COUNT(*) as n
-    FROM applications WHERE applied_at IS NOT NULL
+    FROM applications WHERE applied_at IS NOT NULL AND user_id = $uid
     GROUP BY week ORDER BY week DESC LIMIT 8
-  `);
+  `, p);
 
   const byStatus = all(database, `
-    SELECT status, COUNT(*) as n FROM applications GROUP BY status ORDER BY n DESC
-  `);
+    SELECT status, COUNT(*) as n FROM applications WHERE user_id = $uid GROUP BY status ORDER BY n DESC
+  `, p);
 
   return {
     applied,
@@ -281,9 +295,17 @@ export async function archiveOldJobs(daysOld = 45): Promise<number> {
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
-export async function getProfile(): Promise<UserProfile | undefined> {
+const ALLOWED_PROFILE_FIELDS = new Set([
+  'name','email','phone','linkedin','github','portfolio','resume_path','summary',
+  'skills','experience','education','target_roles','target_locations','min_salary',
+  'blacklist_companies','keywords',
+]);
+
+const ARRAY_PROFILE_FIELDS = new Set(['skills','target_roles','target_locations','blacklist_companies','keywords']);
+
+export async function getProfile(userId: string): Promise<UserProfile | undefined> {
   const database = await getDb();
-  const row = get(database, 'SELECT * FROM profile WHERE id = 1');
+  const row = get(database, 'SELECT * FROM user_profiles WHERE user_id = $uid', { $uid: userId });
   if (!row) return undefined;
   return {
     ...row,
@@ -295,13 +317,30 @@ export async function getProfile(): Promise<UserProfile | undefined> {
   } as UserProfile;
 }
 
-const ALLOWED_PROFILE_FIELDS = new Set([
-  'name','email','phone','linkedin','github','portfolio','resume_path','summary',
-  'skills','experience','education','target_roles','target_locations','min_salary',
-  'blacklist_companies','keywords',
-]);
+export async function updateProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
+  const database = await getDb();
+  const safe = Object.fromEntries(Object.entries(data).filter(([k]) => ALLOWED_PROFILE_FIELDS.has(k))) as Partial<UserProfile>;
+  const serialized: Record<string, any> = { updated_at: new Date().toISOString() };
+  for (const [k, v] of Object.entries(safe)) {
+    serialized[k] = ARRAY_PROFILE_FIELDS.has(k) ? JSON.stringify(Array.isArray(v) ? v : []) : v;
+  }
 
-const ARRAY_PROFILE_FIELDS = new Set(['skills','target_roles','target_locations','blacklist_companies','keywords']);
+  const fields = Object.keys(serialized);
+  const allFields = ['user_id', ...fields];
+  const insertCols = allFields.join(', ');
+  const insertVals = allFields.map(f => f === 'user_id' ? '$user_id' : `$${f}`).join(', ');
+  const updateSet = fields.map(f => `${f} = $${f}`).join(', ');
+
+  const params: Record<string, any> = { $user_id: userId };
+  for (const [k, v] of Object.entries(serialized)) params[`$${k}`] = v;
+
+  run(database, `
+    INSERT INTO user_profiles (${insertCols}) VALUES (${insertVals})
+    ON CONFLICT(user_id) DO UPDATE SET ${updateSet}
+  `, params);
+}
+
+// ── Follow-ups (global — cron notifies all users) ─────────────────────────────
 
 export async function getPendingFollowUps(): Promise<Record<string, any>[]> {
   const database = await getDb();
@@ -318,18 +357,4 @@ export async function getPendingFollowUps(): Promise<Record<string, any>[]> {
 export async function markFollowUpSent(id: string): Promise<void> {
   const database = await getDb();
   run(database, `UPDATE applications SET follow_up_sent = 1, updated_at = datetime('now') WHERE id = $id`, { $id: id });
-}
-
-export async function updateProfile(data: Partial<UserProfile>): Promise<void> {
-  const database = await getDb();
-  const safe = Object.fromEntries(Object.entries(data).filter(([k]) => ALLOWED_PROFILE_FIELDS.has(k))) as Partial<UserProfile>;
-  const serialized: Record<string, any> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(safe)) {
-    serialized[k] = ARRAY_PROFILE_FIELDS.has(k) ? JSON.stringify(Array.isArray(v) ? v : []) : v;
-  }
-  if (Object.keys(serialized).length <= 1) return; // apenas updated_at, nada a salvar
-  const fields = Object.keys(serialized).map((k) => `${k} = $${k}`).join(', ');
-  const params: Record<string, any> = {};
-  for (const [k, v] of Object.entries(serialized)) params[`$${k}`] = v;
-  run(database, `UPDATE profile SET ${fields} WHERE id = 1`, params);
 }
