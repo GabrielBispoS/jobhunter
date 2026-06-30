@@ -488,6 +488,8 @@
           Só alto match
         </div>
       </div>
+      <!-- Jobs count -->
+      <div id="jobs-count-bar" style="font-size:13px;color:var(--muted);padding:6px 0 2px"></div>
       <!-- Bulk action bar -->
       <div class="bulk-bar" id="bulk-bar">
         <input type="checkbox" class="row-check" id="select-all-check" onchange="toggleSelectAll(this.checked)" />
@@ -1179,6 +1181,15 @@ function renderJobsPage() {
   const pageJobs = filteredJobs.slice(start, start + JOBS_PER_PAGE);
 
   renderJobsTable('jobs-tbody', pageJobs, false);
+
+  // Always show count — distinguishes filtered vs total
+  const countBar = document.getElementById('jobs-count-bar');
+  if (countBar) {
+    const isFiltered = total < allJobs.length;
+    countBar.textContent = isFiltered
+      ? `${total} vaga${total !== 1 ? 's' : ''} (filtradas de ${allJobs.length} total)`
+      : `${total} vaga${total !== 1 ? 's' : ''} encontrada${total !== 1 ? 's' : ''}`;
+  }
 
   const pag = document.getElementById('jobs-pagination');
   if (!pag) return;
