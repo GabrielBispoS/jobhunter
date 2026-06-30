@@ -9,6 +9,7 @@ import { getDb, all, get, run as dbRun } from './db';
 import { sendJobAlert, sendFollowUpReminder, isMailConfigured } from './mailer';
 import { getPendingFollowUps, markFollowUpSent, archiveOldJobs } from './db';
 import { fingerprint, deduplicateJobs } from './dedup';
+import { expandKeywords, scoreJob, MIN_RELEVANCE_SCORE } from './keyword_expander';
 import { Job, SearchConfig } from './types';
 
 interface ScheduleConfig {
@@ -102,13 +103,21 @@ async function executeSchedule(cfg: ScheduleConfig): Promise<void> {
     );
 
     const scrapedJobs = await runScrape(config, sources);
-    const newJobs = deduplicateJobs(scrapedJobs, existingFps);
+
+    // Score and filter irrelevant jobs before saving
+    const expandedSearch = await expandKeywords(keywords);
+    for (const job of scrapedJobs) {
+      (job as any)._score = scoreJob(job.title, job.company, job.description, expandedSearch);
+    }
+    const deduped = deduplicateJobs(scrapedJobs, existingFps);
+    const newJobs = deduped.filter(j => ((j as any)._score || 0) >= MIN_RELEVANCE_SCORE);
 
     if (newJobs.length > 0) {
       const { upsertJobs } = await import('./db');
       await upsertJobs(cfg.user_id, newJobs);
 
-      console.log(`✅ Cron [${cfg.name}] — ${newJobs.length} new jobs saved`);
+      const filtered = deduped.length - newJobs.length;
+      console.log(`✅ Cron [${cfg.name}] — ${newJobs.length} new jobs saved (${filtered} filtered as irrelevant)`);
 
       // Send email if configured and enabled
       if (cfg.notify_email === 1 && isMailConfigured()) {

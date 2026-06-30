@@ -25,7 +25,7 @@ import {
   getPendingFollowUps, markFollowUpSent,
 } from '../db';
 import { SearchConfig, Job } from '../types';
-import { expandKeywords, buildSearchQueries, scoreJob, checkOllama } from '../keyword_expander';
+import { expandKeywords, buildSearchQueries, scoreJob, checkOllama, MIN_RELEVANCE_SCORE } from '../keyword_expander';
 import { browserSemaphore, PLAYWRIGHT_CONCURRENCY } from '../queue';
 import { deduplicateJobs, fingerprint } from '../dedup';
 import { sendJobAlert, isMailConfigured } from '../mailer';
@@ -370,18 +370,22 @@ router.post('/scrape/stream', async (req: Request, res: Response) => {
       const result = mockResult;
       const deduped = deduplicateJobs(result.jobs, existingFps);
 
-      // Add new fingerprints so subsequent scrapers benefit too
-      deduped.forEach(j => existingFps.add(fingerprint(j)));
+      // Filter out irrelevant jobs before saving — prevents "Gestor de Vendas" appearing in law searches
+      const relevant = deduped.filter(j => ((j as any)._score || 0) >= MIN_RELEVANCE_SCORE);
 
-      if (deduped.length > 0) await upsertJobs(req.userId, deduped);
+      // Add new fingerprints so subsequent scrapers benefit too
+      relevant.forEach(j => existingFps.add(fingerprint(j)));
+
+      if (relevant.length > 0) await upsertJobs(req.userId, relevant);
 
       grandTotal += result.jobs.length;
-      grandNew += deduped.length;
-      allNewJobs.push(...deduped);
+      grandNew += relevant.length;
+      allNewJobs.push(...relevant);
 
       emit({
         type: 'progress', source: key, status: 'done',
-        count: deduped.length, raw: result.jobs.length,
+        count: relevant.length, raw: result.jobs.length,
+        filtered: deduped.length - relevant.length,
         errors: result.errors,
         duration_ms: Date.now() - sourceStart,
       });
